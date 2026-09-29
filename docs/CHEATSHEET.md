@@ -145,6 +145,7 @@
 | 图/公式不显示 | 换 WezTerm/kitty；`NVIM_DEVKIT_IMAGES=1 nvim-devkit`；tmux 开 passthrough；缺 magick 先不管 PNG 图 |
 | 某个插件报错 | `nvim-devkit --headless "+Lazy restore" +qa` 回锁定版本；再不行 `:Lazy! sync` |
 | 更新后坏了 | `git -C ~/nvim-devkit log --oneline -5` → `git checkout <旧提交> -- config/` → 重跑 `install.sh --update` |
+| 分屏分不清 / 分界线不明显 | `:NvkitSplits`（压暗非活动窗口 + 加亮分界线，再按关闭）；或 `:colorscheme catppuccin-mocha`（自带 dim_inactive） |
 
 ---
 

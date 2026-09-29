@@ -1,5 +1,8 @@
 local aug = vim.api.nvim_create_augroup("nvim_devkit", { clear = true })
 
+-- 注册 :NvkitSplits（分屏增强开关，默认不启用任何效果）
+require("nvim-devkit.theme")
+
 -- 复制高亮
 vim.api.nvim_create_autocmd("TextYankPost", {
   group = aug,

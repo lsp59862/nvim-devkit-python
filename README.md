@@ -169,6 +169,26 @@ Vim 的"模式 + 前缀键 + 寄存器"让误按后果难以预期。本配置�
 - 嵌套 tmux 时图片需要 `set -g allow-passthrough on`。
 - ImageMagick 影响图片转换与 sixel（PNG 免转换）：有 conda 的服务器可 `./install.sh --with-magick` 自动安装到独立环境，否则系统 `apt install imagemagick`。
 
+## 主题与分屏清晰度
+
+默认主题是 **tokyonight night**。仓库另外装好了两套热门主题（只安装，**不会自动切换**，用 `:colorscheme` 手动试）：
+
+| 主题 | 试用命令 | 分屏增强 |
+| --- | --- | --- |
+| catppuccin | `:colorscheme catppuccin-mocha`（另有 `macchiato` / `frappe` / `latte`） | 已启用 `dim_inactive`（非当前窗口压暗） |
+| kanagawa | `:colorscheme kanagawa-wave`（另有 `dragon` / `lotus`） | 已启用 `dimInactive` |
+| tokyonight | `:colorscheme tokyonight-storm` / `tokyonight-day` | 可在 `config/lua/plugins/ui.lua` 的 opts 里加 `dim_inactive = true` |
+
+分屏后"两个文件在同一平面分不清 / 分界线不明显"，任选（可叠加）：
+
+1. **运行时一键切换**（任意主题生效，不改配置文件）：
+   - `:NvkitSplits` —— 压暗非活动窗口 + 分界线加亮（再执行一次关闭）
+   - 单独控制：`:lua require("nvim-devkit.theme").dim_inactive(true)`、`:lua require("nvim-devkit.theme").vivid_separator(true)`
+2. 切到自带压暗的主题试试：`:colorscheme catppuccin-mocha` 或 `:colorscheme kanagawa-wave`
+3. **想永久生效**：把 `:lua require("nvim-devkit.theme").clear_splits(true)` 写进 `config/lua/config/autocmds.lua` 末尾
+
+换默认主题：改 `config/lua/plugins/ui.lua` 里 tokyonight 的 `config` 一行，例如 `vim.cmd.colorscheme("catppuccin-mocha")`，然后提交推送、各服务器 `./install.sh --update`。
+
 ## 依赖要求
 
 服务器需有：`git`、`curl`、`tar`、C 编译器（gcc，编译 treesitter parser）、可选 `python3`（venv 能力；conda 环境里的 python3 也可）。其余全部自动安装到 `~/.local`，无需 sudo。
