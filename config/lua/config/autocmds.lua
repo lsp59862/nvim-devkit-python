@@ -2,6 +2,8 @@ local aug = vim.api.nvim_create_augroup("nvim_devkit", { clear = true })
 
 -- 注册 :NvkitSplits（分屏增强开关，默认不启用任何效果）
 require("nvim-devkit.theme")
+-- 注册 :q/:wq/:x 的"只关文件、布局不动"语义
+require("nvim-devkit.winbuf").setup()
 
 -- 复制高亮
 vim.api.nvim_create_autocmd("TextYankPost", {

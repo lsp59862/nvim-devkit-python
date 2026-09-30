@@ -33,18 +33,8 @@ map("n", "<leader>wd", "<C-w>c", { desc = "关闭当前窗口" })
 map("n", "<Tab>", "<cmd>bnext<CR>", { desc = "下一个 buffer" })
 map("n", "<S-Tab>", "<cmd>bprevious<CR>", { desc = "上一个 buffer" })
 map("n", "<leader>bd", function()
-  local snacks = require("snacks")
-  snacks.bufdelete()
-  -- 删掉最后一个有名字的文件后，自动回到启动页（避免留下空文件窗口）
-  vim.schedule(function()
-    local named = vim.tbl_filter(function(b)
-      return b.name ~= ""
-    end, vim.fn.getbufinfo({ buflisted = 1 }))
-    if #named == 0 then
-      snacks.dashboard.open()
-    end
-  end)
-end, { desc = "关闭当前 buffer（最后一个是回到启动页）" })
+  require("nvim-devkit.winbuf").delete_buffer_and_windows()
+end, { desc = "关闭文件+窗口（最后一个回启动页；只关文件用 :q）" })
 map("n", "<leader>bo", function() require("snacks").bufdelete.other() end, { desc = "关闭其他 buffer" })
 
 -- ── 文件 / 搜索（snacks picker）──────────────────────
