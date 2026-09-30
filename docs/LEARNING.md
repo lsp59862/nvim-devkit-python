@@ -83,7 +83,7 @@
 - `<leader>e` 文件树、`<leader><space>` 智能查找、`<leader>ff` 找文件
 - `<Tab> / <S-Tab>` 切 buffer；`<leader>bd` 关 buffer；`<leader>bo` 关其他
 - `Ctrl-h/j/k/l` 跨窗口；`<leader>wo / w= / wd`
-- **文件/窗口语义**：`:q`=关文件但布局不动（同文件的其他分屏继续显示）；`:bd`/`<leader>bd`=关文件+关当前分屏（其他分屏切到别的 buffer；单窗口时窗口保留，最后一个文件自动回启动页，`<leader>qh` 可随时打开）；`<leader>wd`=只关窗口，文件保留。tab 只是窗口布局容器，一般用不到
+- **文件/窗口语义**：`:q`=关文件但布局不动（窗口切到最近使用的其它 buffer；同文件其他分屏继续显示；一个 buffer 都没了就退出 nvim，可连按 `:q` 依次遍历文件直到退出）；`:bd`/`<leader>bd`=关文件+关当前分屏（未保存时弹三选项；最后一个文件自动回启动页，`<leader>qh` 可随时打开）；`<leader>wd`=只关窗口，文件保留。tab 只是窗口布局容器，一般用不到
 - 会话：`<leader>qs` 存/恢复本目录、`<leader>ql` 恢复上次、`<leader>qd` 停止记录
 - 练习：重启 nvim 后用 `<leader>ql` 回到所有打开的文件与光标位置
 

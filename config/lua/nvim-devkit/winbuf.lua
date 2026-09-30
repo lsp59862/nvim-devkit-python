@@ -1,10 +1,9 @@
 -- 文件(buffers) / 窗口(windows) 语义定制（Neovim 0.12）
 --
 --   :q / :q! / :wq / :wq! / :x / :x!   → 只关文件，窗口布局不变
---     · 同一文件还在其他分屏显示时：只把当前窗口切走，文件保持打开
---     · 当前是最后一个显示它的窗口时：删除 buffer，窗口原地变空 buffer
---   :bd / <leader>bd                    → 关文件 + 关闭显示它的窗口（原生语义）
---     · 已无任何命名文件时打开启动页
+--     · 同一文件还在其他分屏显示时：只把当前分屏切到别的 buffer，文件保持打开
+--     · 最后一个视图：还有其它 buffer → 切到最近使用的一个；一个都没有 → 退出程序
+--   :bd / :bd! / <leader>bd             → 关文件 + 关当前窗口（未保存时三选项；最后一个文件回启动页）
 --   <leader>wd                          → 只关窗口，文件保留（无改动）
 --
 -- 仅接管"手动输入"的命令（cnoreabbrev），脚本/插件调用不受影响；
@@ -80,23 +79,33 @@ function M.close_file(opts)
     return
   end
 
+  -- 同一文件还有其他分屏：只把当前分屏切到别的 buffer，文件保持打开
   if #vim.fn.win_findbuf(buf) > 1 then
     switch_away(buf)
     return
   end
 
-  -- 最后一个显示它的窗口：窗口原地换成空 buffer，再删旧 buffer
-  local win = vim.api.nvim_get_current_win()
-  local empty = vim.api.nvim_create_buf(true, false)
-  vim.api.nvim_win_set_buf(win, empty)
-  pcall(vim.cmd, (opts.bang and "bwipeout! " or "bdelete! ") .. buf)
+  -- 没有其它已列出的 buffer：退出程序（单窗口 = 退出 nvim；
+  -- 若还有终端等窗口则只关当前窗口）
+  local others = vim.tbl_filter(function(b)
+    return b.bufnr ~= buf
+  end, vim.fn.getbufinfo({ buflisted = 1 }))
+  if #others == 0 then
+    vim.cmd(opts.bang and "quit!" or "quit")
+    return
+  end
+
+  -- 删除文件，窗口切到最近使用的其它 buffer
+  require("snacks").bufdelete({ buf = buf, force = true })
 end
 
---- 关文件 + 关当前窗口（<leader>bd；确定性的"关标签"语义）
+--- 关文件 + 关当前窗口（<leader>bd / 键入 :bd；确定性的"关标签"语义）
 --- · 文件在别的分屏也显示时：那些窗口切到其他 buffer，当前窗口关闭
 --- · 单窗口时：窗口无法关闭（否则退出 nvim），文件关闭后窗口保留
 --- · 已无命名文件 → 启动页
-function M.delete_buffer_and_windows()
+---@param opts? { bang?: boolean }
+function M.delete_buffer_and_windows(opts)
+  opts = opts or {}
   local win = vim.api.nvim_get_current_win()
 
   -- 浮窗（dashboard 等）没有"文件"概念：直接关窗
@@ -107,8 +116,8 @@ function M.delete_buffer_and_windows()
 
   local buf = vim.api.nvim_get_current_buf()
 
-  -- 未保存时先确认
-  if vim.bo[buf].modified then
+  -- 未保存时先确认（bang 表示丢弃）
+  if vim.bo[buf].modified and not opts.bang then
     local name = vim.fn.fnamemodify(vim.fn.bufname(buf), ":t")
     local choice = vim.fn.confirm(("文件 %s 已修改，保存？"):format(name), "&保存并关闭\n&丢弃修改\n&取消", 3)
     if choice == 0 or choice == 3 then
@@ -143,6 +152,15 @@ end
 ---@param lhs string
 ---@param vchar string
 function M.expand(lhs, vchar)
+  if lhs == "bd" then
+    -- 带参数写法（:bd 3 / :bd! 3）在输入空格时不要展开
+    if vchar == " " or vchar == "\t" then
+      return lhs
+    end
+    -- 展开为自定义命令 NvkitBd；触发字符 "!" 会被自动追加成 NvkitBd!
+    return "NvkitBd"
+  end
+
   local bang = vchar == "!"
   local args
   if lhs == "q" then
@@ -158,6 +176,15 @@ end
 
 --- 注册命令重定向（只影响手动输入）
 function M.setup()
+  -- 键入 :bd / :bd! 的落地命令（无参数走新语义；带参数透传原生）
+  vim.api.nvim_create_user_command("NvkitBd", function(cmd)
+    if #cmd.fargs > 0 then
+      vim.cmd("bd" .. (cmd.bang and "!" or "") .. " " .. table.concat(cmd.fargs, " "))
+      return
+    end
+    M.delete_buffer_and_windows({ bang = cmd.bang })
+  end, { nargs = "*", bang = true, desc = "关闭文件+当前窗口（无参数时）" })
+
   local function def(lhs)
     local line = ([[cnoreabbrev <expr> %s (getcmdtype() == ':' && getcmdline() ==# '%s' && luaeval("require('nvim-devkit.winbuf').is_file_window()")) ? luaeval("require('nvim-devkit.winbuf').expand('%s', vim.v.char)") : '%s']]):format(lhs, lhs, lhs, lhs)
     pcall(vim.cmd, line)
@@ -165,6 +192,7 @@ function M.setup()
   def("q")
   def("wq")
   def("x")
+  def("bd")
 end
 
 return M
