@@ -168,6 +168,14 @@ Neovim 原生的"关文件 / 关窗口"语义很容易踩坑（同一个键在�
 
 > 规则细节：只有"有名文件"参与自动切换；没有有名文件时一律显示 dashboard。help / quickfix / 终端 / 浮窗保持 Neovim 原生行为。
 
+### tab = 工作区（隔离）
+
+每个 tab 拥有独立的文件列表（由 scope.nvim 通过 `buflisted` 切换实现）：切换 tab 后，`:ls`、`<leader>,`（buffer 列表）、`:bnext` / `<Tab>` 只会看到/循环**当前 tab 的文件**；`:q` / `:bd` 的"其它文件"也只看本 tab（tab 内文件清空后回 dashboard）。会话保存/恢复（`<leader>qs` / `<leader>ql`）会保留各 tab 的文件归属。
+
+- 同一文件在两个 tab 打开时**就是同一个 buffer**（内容、撤销历史、修改状态共享）——tab 只是窗口布局容器，这是 Neovim 的全局 buffer 模型；要完全独立只能开多个 nvim 实例
+- 相关命令：`:ScopeList`（查看各 tab 的文件归属）、`:ScopeMoveBuf`（把当前 buffer 移到指定 tab）
+- 新 tab 里打开"已在其它 tab 打开的文件"时，会在两个 tab 都可见（共享同一 buffer）
+
 ## 目录结构
 
 ```
