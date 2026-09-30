@@ -27,7 +27,13 @@ map("n", "<C-k>", "<C-w>k", { desc = "上窗口" })
 map("n", "<C-l>", "<C-w>l", { desc = "右窗口" })
 map("n", "<leader>wo", "<C-w>o", { desc = "只保留当前窗口" })
 map("n", "<leader>w=", "<C-w>=", { desc = "均分窗口" })
-map("n", "<leader>wd", "<C-w>c", { desc = "关闭当前窗口" })
+map("n", "<leader>wd", function()
+  require("nvim-devkit.winbuf").close_window()
+end, { desc = "关闭当前窗口（单窗口/dashboard 上会拒绝）" })
+
+-- ── 标签页 ───────────────────────────────────────────
+map("n", "<C-Tab>", "<cmd>tabnext<CR>", { desc = "下一个标签页" })
+map("n", "<C-S-Tab>", "<cmd>tabprevious<CR>", { desc = "上一个标签页" })
 
 -- ── Buffer ───────────────────────────────────────────
 map("n", "<Tab>", "<cmd>bnext<CR>", { desc = "下一个 buffer" })
@@ -59,10 +65,10 @@ map("n", "<leader>qd", function() require("persistence").stop() end, { desc = "�
 
 -- ── 回主页 ───────────────────────────────────────────
 local function home()
-  require("snacks").dashboard.open()
+  require("nvim-devkit.winbuf").open_dashboard()
 end
 map("n", "<leader>qh", home, { desc = "回到启动页" })
-vim.api.nvim_create_user_command("NvkitHome", home, { desc = "打开启动页（dashboard）" })
+vim.api.nvim_create_user_command("NvkitHome", home, { desc = "打开启动页（dashboard，普通窗口）" })
 
 -- ── Git ─────────────────────────────────────────────
 map("n", "<leader>gg", function() require("snacks").lazygit() end, { desc = "Lazygit" })

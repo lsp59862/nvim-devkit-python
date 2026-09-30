@@ -1,17 +1,50 @@
 -- 文件(buffers) / 窗口(windows) 语义定制（Neovim 0.12）
 --
---   :q / :q! / :wq / :wq! / :x / :x!   → 只关文件，窗口布局不变
---     · 同一文件还在其他分屏显示时：只把当前分屏切到别的 buffer，文件保持打开
---     · 最后一个视图：还有其它 buffer → 切到最近使用的一个；一个都没有 → 退出程序
---   :bd / :bd! / <leader>bd             → 关文件 + 关当前窗口（未保存时三选项；最后一个文件回启动页）
---   <leader>wd                          → 只关窗口，文件保留（无改动）
+--   :q / :q! / :wq / :wq! / :x / :x!   → 只关文件，窗口与 tab 布局不变
+--     · 还有其它文件 → 当前窗口切到最近使用的其它文件              [1.1]
+--     · 没有其它文件 → 当前窗口打开 dashboard（程序不退出）         [1.2]
+--     · dashboard 窗口 → 放行原生：单 tab 退出 nvim / 多 tab 关当前 tab [1.3/3.1]
+--   :bd / :bd! / <leader>bd             → 关文件 +（多窗口时）关当前窗口   [bd]
+--     · dashboard 上拒绝（提示用 :q）
+--     · 没有其它文件 → 打开 dashboard（程序不退出）
+--   <leader>wd                          → 只关窗口，不动 buffer
+--     · 单窗口 / dashboard 上拒绝并提示
+--   :Exit（键入 :exit / :exit!）         → 无条件退出 nvim（qa!）
 --
--- 仅接管"手动输入"的命令（cnoreabbrev），脚本/插件调用不受影响；
--- help/quickfix/终端/浮窗/无名空 buffer 一律保持原生行为。
+-- 仅接管"手动输入"的命令与以上键位，脚本/插件调用不受影响；
+-- help/quickfix/终端/浮窗 一律保持原生行为。
 local M = {}
 
 local function notify(msg, level)
   vim.notify(msg, level or vim.log.levels.INFO, { title = "winbuf" })
+end
+
+--- 当前 buffer 是否是 dashboard（启动页 / :NvkitHome 打开的普通窗口）
+function M.is_dashboard()
+  return vim.bo.filetype == "snacks_dashboard"
+end
+
+--- 在当前窗口打开 dashboard（普通 buffer，非浮窗）
+function M.open_dashboard()
+  require("snacks").dashboard.open({ win = 0 })
+end
+
+--- 普通窗口（不含浮窗）数量
+local function normal_win_count()
+  local n = 0
+  for _, w in ipairs(vim.api.nvim_list_wins()) do
+    if vim.api.nvim_win_get_config(w).relative == "" then
+      n = n + 1
+    end
+  end
+  return n
+end
+
+--- 除了 buf 之外的"文件 buffer"（已列出且有名）
+local function other_files(buf)
+  return vim.tbl_filter(function(b)
+    return b.bufnr ~= buf and b.name ~= ""
+  end, vim.fn.getbufinfo({ buflisted = 1 }))
 end
 
 --- 当前窗口是否为"普通命名文件"（决定是否接管 :q 系列）
@@ -29,15 +62,9 @@ function M.is_file_window()
     and vim.api.nvim_buf_get_name(buf) ~= ""
 end
 
---- 普通窗口（不含浮窗）数量
-local function normal_win_count()
-  local n = 0
-  for _, w in ipairs(vim.api.nvim_list_wins()) do
-    if vim.api.nvim_win_get_config(w).relative == "" then
-      n = n + 1
-    end
-  end
-  return n
+--- :bd 的接管范围：普通命名文件窗口，或 dashboard 窗口（用来拒绝）
+function M.is_bd_context()
+  return M.is_file_window() or M.is_dashboard()
 end
 
 --- 把当前窗口切换到别的 buffer（文件继续在其他分屏显示）
@@ -57,10 +84,10 @@ local function switch_away(buf)
       return
     end
   end
-  vim.cmd("enew")
+  M.open_dashboard()
 end
 
---- 只关文件、布局不动（:q / :wq / :x 的新语义）
+--- 只关文件、布局不动（:q / :wq / :x）
 ---@param opts? { bang?: boolean, write?: boolean }
 function M.close_file(opts)
   opts = opts or {}
@@ -79,36 +106,41 @@ function M.close_file(opts)
     return
   end
 
-  -- 同一文件还有其他分屏：只把当前分屏切到别的 buffer，文件保持打开
+  local others = other_files(buf)
+
+  -- 同一文件还在其他分屏显示：只把当前窗口切走，文件保持打开
   if #vim.fn.win_findbuf(buf) > 1 then
-    switch_away(buf)
+    if #others > 0 then
+      switch_away(buf)
+    else
+      M.open_dashboard()
+    end
     return
   end
 
-  -- 没有其它已列出的 buffer：退出程序（单窗口 = 退出 nvim；
-  -- 若还有终端等窗口则只关当前窗口）
-  local others = vim.tbl_filter(function(b)
-    return b.bufnr ~= buf
-  end, vim.fn.getbufinfo({ buflisted = 1 }))
-  if #others == 0 then
-    vim.cmd(opts.bang and "quit!" or "quit")
-    return
+  -- 当前窗口是该文件的最后一个视图
+  if #others > 0 then
+    -- 删除文件，窗口切到最近使用的其它文件
+    require("snacks").bufdelete({ buf = buf, force = true })
+  else
+    -- 没有其它文件：回 dashboard，程序不退出
+    M.open_dashboard()
+    pcall(vim.cmd, "bdelete! " .. buf)
   end
-
-  -- 删除文件，窗口切到最近使用的其它 buffer
-  require("snacks").bufdelete({ buf = buf, force = true })
 end
 
---- 关文件 + 关当前窗口（<leader>bd / 键入 :bd；确定性的"关标签"语义）
---- · 文件在别的分屏也显示时：那些窗口切到其他 buffer，当前窗口关闭
---- · 单窗口时：窗口无法关闭（否则退出 nvim），文件关闭后窗口保留
---- · 已无命名文件 → 启动页
+--- 关文件 +（多窗口时）关当前窗口（:bd / <leader>bd）
 ---@param opts? { bang?: boolean }
 function M.delete_buffer_and_windows(opts)
   opts = opts or {}
   local win = vim.api.nvim_get_current_win()
 
-  -- 浮窗（dashboard 等）没有"文件"概念：直接关窗
+  if M.is_dashboard() then
+    notify("dashboard 上请用 :q（单 tab 退出，多 tab 关当前 tab）", vim.log.levels.WARN)
+    return
+  end
+
+  -- 非 dashboard 的浮窗：直接关窗
   if vim.api.nvim_win_get_config(win).relative ~= "" then
     pcall(vim.api.nvim_win_close, win, true)
     return
@@ -132,20 +164,35 @@ function M.delete_buffer_and_windows(opts)
     end
   end
 
-  -- 删文件（布局暂时不动），再关掉当前窗口（浮窗不计入，避免只剩浮窗的尴尬）
+  -- 删文件（布局暂时不动），多窗口时再关掉当前窗口
   require("snacks").bufdelete({ buf = buf, force = true })
   if vim.api.nvim_win_is_valid(win) and normal_win_count() > 1 then
     vim.api.nvim_win_close(win, true)
   end
 
-  vim.schedule(function()
-    local named = vim.tbl_filter(function(b)
-      return b.name ~= ""
-    end, vim.fn.getbufinfo({ buflisted = 1 }))
-    if #named == 0 then
-      require("snacks").dashboard.open()
-    end
-  end)
+  -- 已无任何其它文件 → 回 dashboard
+  local named = vim.tbl_filter(function(b)
+    return b.name ~= ""
+  end, vim.fn.getbufinfo({ buflisted = 1 }))
+  if #named == 0 and not M.is_dashboard() then
+    M.open_dashboard()
+  end
+end
+
+--- 只关窗口（<leader>wd）：单窗口 / dashboard 上拒绝
+function M.close_window()
+  if M.is_dashboard() then
+    notify("dashboard 上请用 :q（单 tab 退出，多 tab 关当前 tab）", vim.log.levels.WARN)
+    return
+  end
+  if normal_win_count() <= 1 then
+    notify("单窗口不能关闭窗口：用 :q 关文件，或 :bd 关文件+窗口", vim.log.levels.WARN)
+    return
+  end
+  local ok, err = pcall(vim.cmd, "close")
+  if not ok then
+    notify("关闭窗口失败：" .. tostring(err), vim.log.levels.WARN)
+  end
 end
 
 --- cnoreabbrev 的展开函数（在展开瞬间读取 v:char 判断 !）
@@ -183,16 +230,25 @@ function M.setup()
       return
     end
     M.delete_buffer_and_windows({ bang = cmd.bang })
-  end, { nargs = "*", bang = true, desc = "关闭文件+当前窗口（无参数时）" })
+  end, { nargs = "*", bang = true, desc = "关闭文件+窗口（无参数时）" })
 
-  local function def(lhs)
-    local line = ([[cnoreabbrev <expr> %s (getcmdtype() == ':' && getcmdline() ==# '%s' && luaeval("require('nvim-devkit.winbuf').is_file_window()")) ? luaeval("require('nvim-devkit.winbuf').expand('%s', vim.v.char)") : '%s']]):format(lhs, lhs, lhs, lhs)
+  -- exit：无条件退出 nvim
+  vim.api.nvim_create_user_command("Exit", function()
+    vim.cmd("qa!")
+  end, { bang = true, desc = "无条件退出 nvim" })
+
+  local function def(lhs, cond)
+    cond = cond or "is_file_window"
+    local line = ([[cnoreabbrev <expr> %s (getcmdtype() == ':' && getcmdline() ==# '%s' && luaeval("require('nvim-devkit.winbuf').%s()")) ? luaeval("require('nvim-devkit.winbuf').expand('%s', vim.v.char)") : '%s']]):format(lhs, lhs, cond, lhs, lhs)
     pcall(vim.cmd, line)
   end
   def("q")
   def("wq")
   def("x")
-  def("bd")
+  def("bd", "is_bd_context")
+
+  -- 键入 :exit / :exit! → Exit（内建 :exit 是 :xit 的别名，会保存，这里改为无条件退出）
+  pcall(vim.cmd, [[cnoreabbrev <expr> exit (getcmdtype() == ':' && getcmdline() ==# 'exit') ? 'Exit' : 'exit']])
 end
 
 return M
