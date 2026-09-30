@@ -179,13 +179,16 @@ Vim 的"模式 + 前缀键 + 寄存器"让误按后果难以预期。本配置�
 | kanagawa | `:colorscheme kanagawa-wave`（另有 `dragon` / `lotus`） | 已启用 `dimInactive` |
 | tokyonight | `:colorscheme tokyonight-storm` / `tokyonight-day` | 可在 `config/lua/plugins/ui.lua` 的 opts 里加 `dim_inactive = true` |
 
-分屏后"两个文件在同一平面分不清 / 分界线不明显"，任选（可叠加）：
+**分屏增强默认已开启**：非当前窗口的背景、文字、行号、符号列、空白符区一起压暗，分界线加亮加粗——分屏后两个文件的层次一眼可辨，对任意主题生效。
 
-1. **运行时一键切换**（任意主题生效，不改配置文件）：
-   - `:NvkitSplits` —— 压暗非活动窗口 + 分界线加亮（再执行一次关闭）
-   - 单独控制：`:lua require("nvim-devkit.theme").dim_inactive(true)`、`:lua require("nvim-devkit.theme").vivid_separator(true)`
-2. 切到自带压暗的主题试试：`:colorscheme catppuccin-mocha` 或 `:colorscheme kanagawa-wave`
-3. **想永久生效**：把 `:lua require("nvim-devkit.theme").clear_splits(true)` 写进 `config/lua/config/autocmds.lua` 末尾
+- 运行时开关：`:NvkitSplits`（再执行一次关闭）
+- 启动时关闭：`NVIM_DEVKIT_SPLITS=0 nvim-devkit`
+- **调整压暗强度**（0~1，越大越强；默认 `bg_fade=0.35` 背景趋黑比例、`fg_fade=0.55` 文字趋淡比例）：
+  ```vim
+  :lua local t=require("nvim-devkit.theme"); t.options.bg_fade=0.5; t.options.fg_fade=0.7; t.dim_inactive(false); t.dim_inactive(true)
+  ```
+  确认喜欢的数值后写进 `config/lua/config/autocmds.lua` 末尾即可持久化。
+- 单独控制：`:lua require("nvim-devkit.theme").dim_inactive(...)` / `.vivid_separator(...)`
 
 换默认主题：改 `config/lua/plugins/ui.lua` 里 tokyonight 的 `config` 一行，例如 `vim.cmd.colorscheme("catppuccin-mocha")`，然后提交推送、各服务器 `./install.sh --update`。
 

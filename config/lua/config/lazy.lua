@@ -39,3 +39,11 @@ if mirror and mirror ~= "" then
 end
 
 require("lazy").setup(lazy_opts)
+
+-- 默认开启分屏增强：非活动窗口压暗 + 分界线加亮
+-- 关闭方式：启动前 NVIM_DEVKIT_SPLITS=0，或运行时 :NvkitSplits
+if vim.env.NVIM_DEVKIT_SPLITS ~= "0" then
+  pcall(function()
+    require("nvim-devkit.theme").clear_splits(true, true)
+  end)
+end
