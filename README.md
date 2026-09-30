@@ -24,8 +24,6 @@ nvim-devkit          # 启动（不影响服务器上已有的 nvim 配置）
 
 首次安装会下载 Neovim 0.12、静态 CLI 工具（rg/fd/fzf/lazygit/tree-sitter）、创建独立 Python venv、按 `lazy-lock.json` 安装插件、编译 treesitter parser、安装 LSP。通常 5-10 分钟。
 
-> 这是私人仓库，新服务器首次克隆需要访问凭据，见下方「部署到新服务器」。
-
 ### 安装器选项
 
 | 选项 | 作用 |
@@ -51,36 +49,30 @@ nvim-devkit                            # 启动
 
 ### 部署到新服务器
 
-私人仓库需要访问凭据，二选一：
-
-**方式 A：SSH key（推荐，一劳永逸）**
+公开仓库，直接克隆即可（无需任何凭据）：
 
 ```bash
-# 1) 在目标服务器生成密钥（已有 ~/.ssh/id_ed25519 可跳过）
-ssh-keygen -t ed25519 -C "$(hostname)"
-cat ~/.ssh/id_ed25519.pub
-```
-
-把输出的公钥添加到 GitHub —— 二选一：
-- 仓库 → Settings → Deploy keys → Add deploy key（推荐，权限只限本仓库；只拉取不需要勾写权限）
-- 账号 → Settings → SSH and GPG keys → New SSH key
-
-```bash
-# 2) 克隆并安装
 git clone git@github.com:lsp59862/nvim-devkit-python.git ~/nvim-devkit
+# 或 HTTPS：
+# git clone https://github.com/lsp59862/nvim-devkit-python.git ~/nvim-devkit
 cd ~/nvim-devkit && ./install.sh
 ```
 
-**方式 B：HTTPS + PAT（没有 SSH 条件时）**
+<details>
+<summary>附注：如果你 fork 后设为私有，需要给目标服务器配置访问凭据</summary>
 
-在 GitHub → Settings → Developer settings → Personal access tokens 创建 token（fine-grained 只需该仓库的 Contents: Read）：
+把目标服务器的 SSH 公钥加到 GitHub（仓库 → Settings → Deploy keys，或账号 → Settings → SSH and GPG keys）：
 
 ```bash
-git clone https://<你的PAT>@github.com/lsp59862/nvim-devkit-python.git ~/nvim-devkit
-cd ~/nvim-devkit && ./install.sh
-# 为避免 PAT 留在 remote URL 中，克隆后可执行：
-git -C ~/nvim-devkit remote set-url origin https://github.com/lsp59862/nvim-devkit-python.git
+ssh-keygen -t ed25519 -C "$(hostname)"   # 已有密钥可跳过
+cat ~/.ssh/id_ed25519.pub                # 粘贴到 GitHub 后：
+git clone git@github.com/<你的账号>/nvim-devkit-python.git ~/nvim-devkit
 ```
+
+没有 SSH 条件时可用 HTTPS + PAT（fine-grained 只需该仓库的 Contents: Read），克隆后记得清掉 URL 里的 PAT：
+`git -C ~/nvim-devkit remote set-url origin https://github.com/<你的账号>/nvim-devkit-python.git`
+
+</details>
 
 ### 更新已有服务器
 
@@ -274,13 +266,20 @@ scripts/checkhealth.sh   # 健康检查：硬错误必须为 0
 
 | 项 | 值 |
 | --- | --- |
-| 远端 | `git@github.com:lsp59862/nvim-devkit-python.git`（private，`main` 分支） |
+| 远端 | `git@github.com:lsp59862/nvim-devkit-python.git`（public，`main` 分支） |
+| 许可证 | MIT（见 [LICENSE](LICENSE)） |
 | 插件版本锁 | `config/lazy-lock.json`（提交进 git，所有服务器一致） |
 | 工具版本兜底 | `deps.lock`（GitHub API 不可用时的固定下载地址） |
-| 提交前回归 | `scripts/checkhealth.sh` 硬错误应为 0 |
+| 提交前回归 | `./tests/run.sh` 全过 + `scripts/checkhealth.sh` 硬错误为 0 |
 
 - 回滚配置：`git log --oneline` 找到上一个提交 → `git revert <hash>` 或 `git checkout <hash> -- config/` → `./install.sh --update`
 - 插件单独升级：`:Lazy update` 会更新 lockfile，建议 review 后提交再推送
+
+## 许可证
+
+本项目采用 [MIT License](LICENSE)。
+
+第三方插件由 [lazy.nvim](https://github.com/folke/lazy.nvim) 在安装时从各自上游仓库按**其各自许可证**拉取，本仓库不直接分发插件源码；请留意个别插件上游未附许可证文件（例如 scope.nvim）的情况。
 
 ## 定制
 
