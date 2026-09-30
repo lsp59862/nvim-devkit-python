@@ -32,7 +32,19 @@ map("n", "<leader>wd", "<C-w>c", { desc = "关闭当前窗口" })
 -- ── Buffer ───────────────────────────────────────────
 map("n", "<Tab>", "<cmd>bnext<CR>", { desc = "下一个 buffer" })
 map("n", "<S-Tab>", "<cmd>bprevious<CR>", { desc = "上一个 buffer" })
-map("n", "<leader>bd", function() require("snacks").bufdelete() end, { desc = "关闭当前 buffer" })
+map("n", "<leader>bd", function()
+  local snacks = require("snacks")
+  snacks.bufdelete()
+  -- 删掉最后一个有名字的文件后，自动回到启动页（避免留下空文件窗口）
+  vim.schedule(function()
+    local named = vim.tbl_filter(function(b)
+      return b.name ~= ""
+    end, vim.fn.getbufinfo({ buflisted = 1 }))
+    if #named == 0 then
+      snacks.dashboard.open()
+    end
+  end)
+end, { desc = "关闭当前 buffer（最后一个是回到启动页）" })
 map("n", "<leader>bo", function() require("snacks").bufdelete.other() end, { desc = "关闭其他 buffer" })
 
 -- ── 文件 / 搜索（snacks picker）──────────────────────
@@ -54,6 +66,13 @@ map("n", "<leader>sh", function() require("snacks").picker.help() end, { desc = 
 map("n", "<leader>qs", function() require("persistence").load() end, { desc = "恢复本目录会话" })
 map("n", "<leader>ql", function() require("persistence").load({ last = true }) end, { desc = "恢复上次会话" })
 map("n", "<leader>qd", function() require("persistence").stop() end, { desc = "停止保存会话" })
+
+-- ── 回主页 ───────────────────────────────────────────
+local function home()
+  require("snacks").dashboard.open()
+end
+map("n", "<leader>qh", home, { desc = "回到启动页" })
+vim.api.nvim_create_user_command("NvkitHome", home, { desc = "打开启动页（dashboard）" })
 
 -- ── Git ─────────────────────────────────────────────
 map("n", "<leader>gg", function() require("snacks").lazygit() end, { desc = "Lazygit" })

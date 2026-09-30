@@ -34,6 +34,7 @@
 | `dd`/`cc`/可视 `p` 覆盖 | `u`；被覆盖内容在寄存器 `"1`，`"1p` 找回 |
 | 搜索后到处跳 | `Esc` 清高亮；`Ctrl-o` 回跳；`` `` `` 回上次位置 |
 | 窗口被拆碎 | `<leader>wo` 只留当前；`<leader>w=` 均分；`<leader>ql` 恢复布局 |
+| 分屏打开同一文件，`bd` 后两个窗口都空了 | `bd` 删的是文件（所有分屏一起），关窗口要用 `<leader>wd`；回启动页 `<leader>qh` |
 | 浮窗/补全卡住 | `Esc`；不行 `Ctrl-g` |
 | 终端模式出不来 | `<Esc><Esc>` |
 | 想回到 10 分钟前的整棵树 | `<leader>uE` → 输入 `10m`；前进 `<leader>uL` |
@@ -57,7 +58,7 @@
 | `<leader>m*` | Jupyter | `mi` 初始化 · `ml` 跑行 · `mv` 跑选中 · `mr` 重跑 · `mo/mh` 显示隐藏 |
 | `<leader>g*` | Git | `gg` lazygit · `gs` 暂存块 · `gr` 撤销块 · `gp` 预览 · `gb` blame |
 | `<leader>o*` | opencode | `oa` 提问（带上下文）· `os` 动作面板 · `ot` 面板开关 · `of` 整文件 |
-| `<leader>q*` | 会话 | `qs` 存/恢复本目录 · `ql` 恢复上次 · `qd` 停止记录 |
+| `<leader>q*` | 会话 / 主页 | `qs` 存/恢复本目录 · `ql` 恢复上次 · `qd` 停止记录 · `qh` 回启动页 |
 | `<leader>r*` | 渲染 | `rt` PDF 图片模式（Kitty 终端） |
 
 ### 高频单键
