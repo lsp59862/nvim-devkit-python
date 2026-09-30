@@ -10,6 +10,7 @@
 | --- | --- |
 | `docs/CHEATSHEET.md` | **一页速查卡**：救命键位、键位地图、科研流程、故障排除（建议打印/贴屏；启动页按 `c` 直达） |
 | `docs/LEARNING.md` | 3 周学习计划 + 误按恢复手册 |
+| `docs/TESTING.md` | 行为测试说明与用例清单（改功能必跑 `./tests/run.sh`） |
 | `README.md`（本文） | 部署、更新、卸载与定制 |
 
 ## 快速开始
@@ -257,6 +258,17 @@ Vim 的"模式 + 前缀键 + 寄存器"让误按后果难以预期。本配置�
 - headless 环境下 Snacks 的部分健康检查（`vim.ui.input` / 图片工具）会误报，真实终端中正常；`scripts/checkhealth.sh` 已过滤。
 - 若服务器无法直连 GitHub：`./install.sh --mirror https://gh-proxy.com`（或导出 `NVIM_DEVKIT_MIRROR` 后长期生效）。
 - Ubuntu 精简系统缺 `python3-venv` 时，安装器会自动改用其他 python3 / uv / conda 重试；全部失败会在末尾给出提示。
+
+## 行为测试
+
+```bash
+./tests/run.sh           # 行为测试：19 个用例 / 38 项断言，必须全部通过
+scripts/checkhealth.sh   # 健康检查：硬错误必须为 0
+```
+
+- 覆盖 `:q` / `:bd` / `<leader>wd` / `:exit` / dashboard / tab 工作区 / 会话恢复等**全部交互语义**（含真实按键路径与"退出程序"类行为）
+- 每个用例独立 nvim 进程、使用仓库里的 config，不依赖本机是否已安装
+- **修改任何交互行为后必须跑一遍**，规则与用例清单见 `docs/TESTING.md` 与 `AGENTS.md`
 
 ## 仓库维护
 
