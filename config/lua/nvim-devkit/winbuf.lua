@@ -6,13 +6,15 @@
 --     · dashboard 窗口 → 放行原生：单 tab 退出 nvim / 多 tab 关当前 tab [1.3/3.1]
 --   :bd / :bd! / <leader>bd             → 关文件 +（多窗口时）关当前窗口   [bd]
 --     · dashboard 上拒绝（提示用 :q）
+--     · 该文件的其它视图先切到其它文件 / dashboard，再关当前窗口
 --     · 没有其它文件 → 打开 dashboard（程序不退出）
 --   <leader>wd                          → 只关窗口，不动 buffer
 --     · 单窗口 / dashboard 上拒绝并提示
 --   :Exit（键入 :exit / :exit!）         → 无条件退出 nvim（qa!）
 --
--- 仅接管"手动输入"的命令与以上键位，脚本/插件调用不受影响；
--- help/quickfix/终端/浮窗 一律保持原生行为。
+-- 接管范围：普通窗口里 buftype=="" 且已列出的 buffer（含 :new 的 [NoName]）。
+-- 只有"有名文件"参与自动切换；没有有名文件时一律回 dashboard。
+-- dashboard/nofile/help/quickfix/终端/浮窗 保持原生行为。
 local M = {}
 
 local function notify(msg, level)
@@ -40,14 +42,34 @@ local function normal_win_count()
   return n
 end
 
---- 除了 buf 之外的"文件 buffer"（已列出且有名）
-local function other_files(buf)
-  return vim.tbl_filter(function(b)
-    return b.bufnr ~= buf and b.name ~= ""
+--- 除了 buf 之外的"有名文件"buffer，按最近使用排序，返回 bufnr 列表
+local function named_files_except(buf)
+  local info = vim.tbl_filter(function(b)
+    return b.bufnr ~= buf and b.name ~= "" and vim.bo[b.bufnr].buftype == ""
   end, vim.fn.getbufinfo({ buflisted = 1 }))
+  table.sort(info, function(a, b)
+    return a.lastused > b.lastused
+  end)
+  return vim.tbl_map(function(b)
+    return b.bufnr
+  end, info)
 end
 
---- 当前窗口是否为"普通命名文件"（决定是否接管 :q 系列）
+--- 让某个窗口不再显示被关闭的文件：有可切换文件则切过去，没有则在该窗口打开 dashboard
+---@param win integer
+---@param replacement integer?
+---@return integer? dashboard_win 若打开了 dashboard 则返回该窗口
+local function fill_window(win, replacement)
+  if replacement then
+    vim.api.nvim_win_set_buf(win, replacement)
+    return nil
+  end
+  vim.api.nvim_set_current_win(win)
+  M.open_dashboard()
+  return win
+end
+
+--- 当前窗口是否为可接管的普通 buffer（含 :new 的 [NoName]，不含 dashboard 等特殊 buffer）
 function M.is_file_window()
   if vim.fn.getcmdtype() ~= ":" then
     return false
@@ -57,34 +79,12 @@ function M.is_file_window()
     return false -- 浮窗保持原生
   end
   local buf = vim.api.nvim_get_current_buf()
-  return vim.bo[buf].buftype == ""
-    and vim.bo[buf].buflisted
-    and vim.api.nvim_buf_get_name(buf) ~= ""
+  return vim.bo[buf].buftype == "" and vim.bo[buf].buflisted
 end
 
---- :bd 的接管范围：普通命名文件窗口，或 dashboard 窗口（用来拒绝）
+--- :bd 的接管范围：普通文件窗口，或 dashboard 窗口（用来拒绝）
 function M.is_bd_context()
   return M.is_file_window() or M.is_dashboard()
-end
-
---- 把当前窗口切换到别的 buffer（文件继续在其他分屏显示）
-local function switch_away(buf)
-  local alt = vim.fn.bufnr("#")
-  if alt >= 0 and alt ~= buf and vim.api.nvim_buf_is_valid(alt) and vim.bo[alt].buflisted then
-    vim.api.nvim_win_set_buf(0, alt)
-    return
-  end
-  local info = vim.fn.getbufinfo({ buflisted = 1 })
-  table.sort(info, function(a, b)
-    return a.lastused > b.lastused
-  end)
-  for _, b in ipairs(info) do
-    if b.bufnr ~= buf and b.name ~= "" then
-      vim.api.nvim_win_set_buf(0, b.bufnr)
-      return
-    end
-  end
-  M.open_dashboard()
 end
 
 --- 只关文件、布局不动（:q / :wq / :x）
@@ -92,6 +92,7 @@ end
 function M.close_file(opts)
   opts = opts or {}
   local buf = vim.api.nvim_get_current_buf()
+  local win = vim.api.nvim_get_current_win()
 
   if opts.write then
     local ok, err = pcall(vim.cmd, opts.bang and "write!" or "write")
@@ -106,27 +107,17 @@ function M.close_file(opts)
     return
   end
 
-  local others = other_files(buf)
+  local replacement = named_files_except(buf)[1]
 
-  -- 同一文件还在其他分屏显示：只把当前窗口切走，文件保持打开
+  -- 同一文件还在其它分屏显示：只把当前窗口切走，文件保持打开
   if #vim.fn.win_findbuf(buf) > 1 then
-    if #others > 0 then
-      switch_away(buf)
-    else
-      M.open_dashboard()
-    end
+    fill_window(win, replacement)
     return
   end
 
-  -- 当前窗口是该文件的最后一个视图
-  if #others > 0 then
-    -- 删除文件，窗口切到最近使用的其它文件
-    require("snacks").bufdelete({ buf = buf, force = true })
-  else
-    -- 没有其它文件：回 dashboard，程序不退出
-    M.open_dashboard()
-    pcall(vim.cmd, "bdelete! " .. buf)
-  end
+  -- 当前窗口是该文件的最后一个视图：切走/回 dashboard 后删除文件
+  fill_window(win, replacement)
+  pcall(vim.cmd, "bdelete! " .. buf)
 end
 
 --- 关文件 +（多窗口时）关当前窗口（:bd / <leader>bd）
@@ -164,18 +155,29 @@ function M.delete_buffer_and_windows(opts)
     end
   end
 
-  -- 删文件（布局暂时不动），多窗口时再关掉当前窗口
-  require("snacks").bufdelete({ buf = buf, force = true })
-  if vim.api.nvim_win_is_valid(win) and normal_win_count() > 1 then
+  local replacement = named_files_except(buf)[1]
+  local single = normal_win_count() <= 1
+  local dashboard_win = nil
+
+  -- 该文件的其它视图：切到其它文件；没有可切换的则在这些窗口打开 dashboard
+  for _, w in ipairs(vim.fn.win_findbuf(buf)) do
+    if w ~= win or single then
+      local dw = fill_window(w, replacement)
+      dashboard_win = dashboard_win or dw
+    end
+  end
+
+  -- 多窗口时关掉当前窗口
+  if not single and vim.api.nvim_win_is_valid(win) then
     vim.api.nvim_win_close(win, true)
   end
 
-  -- 已无任何其它文件 → 回 dashboard
-  local named = vim.tbl_filter(function(b)
-    return b.name ~= ""
-  end, vim.fn.getbufinfo({ buflisted = 1 }))
-  if #named == 0 and not M.is_dashboard() then
-    M.open_dashboard()
+  -- 删除文件（此时已无窗口显示它）
+  pcall(vim.cmd, "bdelete! " .. buf)
+
+  -- 焦点切到 dashboard（若打开了）
+  if dashboard_win and vim.api.nvim_win_is_valid(dashboard_win) then
+    vim.api.nvim_set_current_win(dashboard_win)
   end
 end
 
