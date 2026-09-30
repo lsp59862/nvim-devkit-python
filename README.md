@@ -275,6 +275,10 @@ scripts/checkhealth.sh   # 健康检查：硬错误必须为 0
 - 回滚配置：`git log --oneline` 找到上一个提交 → `git revert <hash>` 或 `git checkout <hash> -- config/` → `./install.sh --update`
 - 插件单独升级：`:Lazy update` 会更新 lockfile，建议 review 后提交再推送
 
+## 贡献
+
+本项目由作者独立开发，**不接受外部 Pull Request**；欢迎通过 Issue 反馈问题、通过 Discussions 交流用法。Fork 自用（MIT 允许）没有问题，但外部改动不会合并回上游。详见 [CONTRIBUTING.md](CONTRIBUTING.md)。
+
 ## 许可证
 
 本项目采用 [MIT License](LICENSE)。
