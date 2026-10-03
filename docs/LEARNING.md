@@ -75,7 +75,7 @@
 
 ### Day 2 — 操作符与文本对象（Vim 的精髓）
 - 组合：`dw daw diw`、`ci"`、`da(`、`yap`、`>i{`
-- mini.ai 增强：`v if`（函数内部）、`v af`（整个函数）、`v ic / ac`（类）
+- treesitter 文本对象：`v if` / `v af`（函数内部/整体）、`v ic` / `v ac`（类）——也可直接配操作符（`dif` `yaf` `cif`）；mini.ai 补充 `aa`/`ia`（函数参数）等对象
 - flash：`s` + 标签 = 任意位置 3 键直达
 - 练习：改造一段 Python 函数：改名、换参数、复制函数体，全程用操作符
 
