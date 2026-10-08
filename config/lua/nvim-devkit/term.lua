@@ -651,17 +651,24 @@ function M.picker()
     title = "终端",
     format = "text",
     items = M.items(),
-    confirm = function(_, item)
-      if item.kind then
-        M.select(item.kind, item.id)
-      elseif item.snacks then
-        for _, st in ipairs(require("snacks.terminal").list()) do
-          if st.buf == item.snacks then
-            st:show():focus()
-            return
+    -- 显式关闭 picker：snacks 的"进入其它窗口自动关闭"会跳过浮窗，
+    -- 选中浮动终端时不会自动收起来（底部 split 则会）
+    confirm = function(picker, item)
+      picker:norm(function()
+        picker:close()
+        vim.schedule(function()
+          if item.kind then
+            M.select(item.kind, item.id)
+          elseif item.snacks then
+            for _, st in ipairs(require("snacks.terminal").list()) do
+              if st.buf == item.snacks then
+                st:show():focus()
+                return
+              end
+            end
           end
-        end
-      end
+        end)
+      end)
     end,
     actions = {
       term_kill = function(picker, item)

@@ -57,6 +57,49 @@ lib.ok("picker 参数完整（items/format/confirm/kill）",
     and keys["<C-d>"] == "term_kill",
   ("ok=%s err=%s"):format(tostring(ok), tostring(err)))
 
+-- 实测：从列表确认后 picker 必须收起（snacks 的自动关闭会跳过浮窗，曾导致残留）
+term.summon("float") -- 收起浮动面板，模拟"从列表恢复"
+vim.wait(300)
+term.picker()
+vim.wait(400)
+local pickers = require("snacks.picker").get()
+lib.ok("picker 已打开", #pickers == 1, "n=" .. #pickers)
+
+local function confirm_of(p)
+  local acts = p and p.opts.actions or {}
+  return acts.confirm or (p and p.opts.confirm)
+end
+local function item_of(kind)
+  for _, it in ipairs(term.items()) do
+    if it.kind == kind then
+      return it
+    end
+  end
+end
+
+local pk = pickers[1]
+local confirm = confirm_of(pk)
+lib.ok("confirm 回调可取用", type(confirm) == "function")
+if confirm then
+  confirm(pk, item_of("float"))
+  vim.wait(600)
+  lib.ok("确认浮窗项后 picker 收起", #require("snacks.picker").get() == 0,
+    "n=" .. #require("snacks.picker").get())
+  lib.ok("浮窗面板已显示且聚焦",
+    term.visible("float") and vim.api.nvim_get_current_win() == term.main_win("float"))
+
+  term.picker()
+  vim.wait(400)
+  local pk2 = require("snacks.picker").get()[1]
+  local confirm2 = confirm_of(pk2)
+  if pk2 and confirm2 then
+    confirm2(pk2, item_of("bottom"))
+    vim.wait(600)
+    lib.ok("确认底部项后 picker 收起且聚焦",
+      #require("snacks.picker").get() == 0 and vim.api.nvim_get_current_win() == term.main_win("bottom"))
+  end
+end
+
 for _, t in ipairs(term.terms()) do
   term.kill(t.id)
 end
@@ -64,6 +107,11 @@ for _, st in ipairs(snacks_term.list()) do
   if vim.api.nvim_buf_is_valid(st.buf) then
     vim.api.nvim_buf_delete(st.buf, { force = true })
   end
+end
+for _, p in ipairs(require("snacks.picker").get()) do
+  pcall(function()
+    p:close()
+  end)
 end
 vim.wait(400)
 
