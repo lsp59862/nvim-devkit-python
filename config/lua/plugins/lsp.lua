@@ -122,7 +122,15 @@ return {
       end)
     end,
     opts = {
-      keymap = { preset = "default" },
+      keymap = {
+        preset = "default",
+        -- 默认 preset 只认 <C-y> 接受、<Tab> 仅跳 snippet，导致"回车/Tab 都没反应"；
+        -- 这里改为直觉键位（都带 fallback，无补全菜单时行为不变）
+        ["<CR>"] = { "accept", "fallback" },
+        ["<Tab>"] = { "select_next", "fallback" },
+        ["<S-Tab>"] = { "select_prev", "fallback" },
+        ["<Esc>"] = { "cancel", "fallback" }, -- 第一下撤销预览关菜单，第二下正常退插入
+      },
       appearance = { nerd_font_variant = "mono" },
       completion = {
         documentation = { auto_show = false },

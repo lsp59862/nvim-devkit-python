@@ -8,6 +8,7 @@ return {
     config = function()
       require("scope").setup({ restore_state = false })
       require("nvim-devkit.scope_bridge").setup()
+      require("nvim-devkit.session").setup()
     end,
   },
 }

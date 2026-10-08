@@ -97,8 +97,11 @@ run_case scope_tabclose 0
 run_case scope_session_save 0
 run_case scope_session_load 0
 run_case session_toggle 0
+run_case session_restore 0
 run_case opencode_keys 0
 run_case dashboard_keys 0
+run_case tutor 0
+run_case completion_keys 0
 run_case winbuf_exit_dashboard 1
 run_case winbuf_exit_command 1
 

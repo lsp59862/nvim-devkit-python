@@ -89,6 +89,19 @@ return {
             padding = 1,
           },
           { section = "startup" },
+          -- 本目录有会话快照时提示可按 r 恢复（无快照则不渲染）
+          function()
+            if require("nvim-devkit.session").session_file() then
+              return {
+                align = "center",
+                text = {
+                  { "本目录有会话存档：按 ", hl = "footer" },
+                  { "r", hl = "special" },
+                  { " / <leader>qs 恢复", hl = "footer" },
+                },
+              }
+            end
+          end,
         },
         preset = {
           header = table.concat({

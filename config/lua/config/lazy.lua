@@ -27,7 +27,7 @@ local lazy_opts = {
   performance = {
     cache = { enabled = true },
     rtp = {
-      disabled_plugins = { "gzip", "tarPlugin", "tohtml", "tutor", "zipPlugin", "netrwPlugin" },
+      disabled_plugins = { "gzip", "tarPlugin", "tohtml", "zipPlugin", "netrwPlugin" },
     },
   },
   ui = { border = "rounded" },
