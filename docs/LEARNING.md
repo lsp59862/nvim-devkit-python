@@ -95,7 +95,7 @@
 - 替换：`:s/a/b/g`、`:%s/a/b/gc`（`c` 逐个确认，`inccommand` 实时预览）
 - **练习场（12 题带答案，磨完即过关）**：`docs/practice/day4/README.md`
   ```bash
-  cd ~/nvim-devkit/docs/practice/day4 && nvim-devkit
+  cp -r ~/nvim-devkit/docs/practice/day4 /tmp/day4-drill && cd /tmp/day4-drill && nvim-devkit
   ```
 
 ### Day 5 — 撤销时间线与 Git 基本盘

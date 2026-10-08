@@ -5,11 +5,13 @@
 ## 准备
 
 ```bash
-cd ~/nvim-devkit/docs/practice/day4
-nvim-devkit
+# 建议复制到 /tmp 里练，避免练习改动混进仓库
+cp -r ~/nvim-devkit/docs/practice/day4 /tmp/day4-drill
+cd /tmp/day4-drill && nvim-devkit
 ```
 
 迷路就 `Esc` 清高亮 / `Ctrl-g` 恐慌重置；改错了 `u` 撤销。
+（想在仓库里直接练也可以，练完执行 `git checkout -- docs/practice/day4` 复原。）
 
 ## 12 个练习（按顺序做）
 
@@ -68,7 +70,8 @@ nvim-devkit
 ### 12. 恢复练习
 - `u` 撤销、`Ctrl-r` 重做
 - `:earlier 2m` 回到两分钟前的整棵树
-- 退出 nvim 后复原全部练习文件：`git checkout -- docs/practice/day4`
+- 想在仓库里练的话，退出 nvim 后复原素材：`git checkout -- docs/practice/day4`
+  （或者在 /tmp/day4-drill 里练，直接 `rm -rf` 即可）
 
 ## 答案速查
 
