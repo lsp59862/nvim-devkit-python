@@ -62,7 +62,11 @@ local function apply_dim()
   for _, win in ipairs(vim.api.nvim_list_wins()) do
     if vim.api.nvim_win_get_tabpage(win) == tab then
       pcall(function()
-        vim.wo[win].winhighlight = (win == cur) and "" or dim_hl()
+        if vim.w[win].nvkit_no_dim then
+          vim.wo[win].winhighlight = ""
+        else
+          vim.wo[win].winhighlight = (win == cur) and "" or dim_hl()
+        end
       end)
     end
   end

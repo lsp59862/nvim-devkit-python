@@ -33,6 +33,12 @@ lib.ok("条目区分 [浮]/[底]/[面板]",
 lib.ok("名字是简名不是绝对路径", table.concat(texts, "|"):find("/bin/", 1, true) == nil,
   vim.inspect(texts))
 
+local pcfg = require("snacks").config.picker
+lib.ok("所有 picker：Alt+J/K 上下选择已配置", (function()
+  local i, l = pcfg.win.input.keys, pcfg.win.list.keys
+  return i["<M-j>"] ~= nil and i["<M-k>"] ~= nil and l["<M-j>"] ~= nil and l["<M-k>"] ~= nil
+end)(), vim.inspect({ i = pcfg.win.input.keys["<M-j>"], l = pcfg.win.list.keys["<M-j>"] }))
+
 local sp = require("snacks.picker")
 local orig = sp.pick
 local captured

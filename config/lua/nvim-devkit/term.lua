@@ -14,7 +14,8 @@ local uv = vim.uv or vim.loop
 local FLOAT_RATIO = { w = 0.8, h = 0.8 }
 local BOTTOM_RATIO = 0.3
 local SIDE_MIN, SIDE_MAX = 12, 20
-local SLIDE_STEPS, SLIDE_MS = 10, 14
+local SLIDE_STEPS, SLIDE_MS = 14, 22
+local CURRENT_HL = "NvkitTermCurrent"
 local NS = vim.api.nvim_create_namespace("nvkit_term_side")
 
 ---@class DevkitTerm
@@ -78,10 +79,11 @@ local function float_geom()
   local h = math.max(10, math.floor(lines * FLOAT_RATIO.h))
   local w = math.max(30, math.floor(cols * FLOAT_RATIO.w) - side_width())
   local sw = side_width()
-  local col = math.max(0, math.floor((cols - (w + sw)) / 2))
+  -- 两个浮窗都带圆角边框：侧边栏外宽 sw+2，主窗 col 偏移 sw+2
+  local total = sw + w + 4
+  local col = math.max(0, math.floor((cols - total) / 2))
   local row = math.max(0, math.floor((lines - h) / 2) - 1)
-  -- 侧边栏无边框，高度补 2 行与主窗（带边框）齐平
-  return { row = row, col = col, h = h, w = w, sw = sw, side_h = h + 2 }
+  return { row = row, col = col, h = h, w = w, sw = sw }
 end
 
 -- ── 查询接口（测试与列表共用）──────────────────────────
@@ -221,9 +223,7 @@ function M.remove(buf, delete_buf)
     p.cur = list[1] and list[1].id or nil
     if in_current_tab(p.win) then
       if p.cur then
-        local ct = get(p.cur)
-        vim.api.nvim_win_set_buf(p.win, ct.buf)
-        vim.wo[p.win].winbar = " " .. name_of(ct)
+        vim.api.nvim_win_set_buf(p.win, get(p.cur).buf)
       end
     end
   end
@@ -264,12 +264,9 @@ function M.rename_current()
     t.label = input ~= "" and input or nil
     M.refresh(t.kind)
     local p = panel[t.kind]
-    if in_current_tab(p.win) and p.cur == t.id then
-      vim.wo[p.win].winbar = " " .. name_of(t)
-      if t.kind == "float" then
-        local g = read_geom()
-        set_float_wins(g, g.row, name_of(t))
-      end
+    if in_current_tab(p.win) and p.cur == t.id and t.kind == "float" then
+      local g = read_geom()
+      set_float_wins(g, g.row, name_of(t))
     end
     vim.schedule(function()
       if in_current_tab(p.win) and vim.api.nvim_get_current_win() == p.win then
@@ -302,7 +299,8 @@ function M.refresh(kind)
   vim.bo[buf].modifiable = false
   vim.api.nvim_buf_clear_namespace(buf, NS, 0, -1)
   if hl then
-    vim.api.nvim_buf_add_highlight(buf, NS, "Visual", hl - 1, 0, -1)
+    vim.api.nvim_set_hl(0, CURRENT_HL, { link = "PmenuSel", default = true })
+    vim.api.nvim_buf_add_highlight(buf, NS, CURRENT_HL, hl - 1, 0, -1)
   end
 end
 
@@ -382,7 +380,7 @@ read_geom = function()
   end
   local wc = vim.api.nvim_win_get_config(p.win)
   local sc = vim.api.nvim_win_get_config(p.side)
-  return { row = wc.row, col = sc.col, h = wc.height, w = wc.width, sw = sc.width, side_h = sc.height }
+  return { row = wc.row, col = sc.col, h = wc.height, w = wc.width, sw = sc.width }
 end
 
 set_float_wins = function(g, row, title)
@@ -392,10 +390,10 @@ set_float_wins = function(g, row, title)
       relative = "editor",
       style = "minimal",
       width = g.sw,
-      height = g.side_h,
+      height = g.h,
       row = row,
       col = g.col,
-      border = "none",
+      border = "rounded",
     })
   end
   if is_win(p.win) then
@@ -405,7 +403,7 @@ set_float_wins = function(g, row, title)
       width = g.w,
       height = g.h,
       row = row,
-      col = g.col + g.sw,
+      col = g.col + g.sw + 2,
       border = "rounded",
       title = title and (" " .. title .. " ") or nil,
       title_pos = "center",
@@ -483,19 +481,21 @@ local function show_float()
     relative = "editor",
     style = "minimal",
     width = g.sw,
-    height = g.side_h,
+    height = g.h,
     row = start_row,
     col = g.col,
-    border = "none",
+    border = "rounded",
     zindex = 45,
   })
+  vim.w[p.side].nvkit_no_dim = true
+  vim.wo[p.side].winhighlight = ""
   p.win = vim.api.nvim_open_win(cur.buf, true, {
     relative = "editor",
     style = "minimal",
     width = g.w,
     height = g.h,
     row = start_row,
-    col = g.col + g.sw,
+    col = g.col + g.sw + 2,
     border = "rounded",
     title = " " .. name_of(cur) .. " ",
     title_pos = "center",
@@ -536,8 +536,10 @@ local function show_bottom()
   vim.api.nvim_win_set_width(p.side, side_width())
   setup_side_win(p.side)
   vim.api.nvim_win_set_buf(p.side, ensure_side_buf("bottom"))
+  vim.w[p.side].nvkit_no_dim = true
+  vim.wo[p.side].winhighlight = ""
   vim.api.nvim_win_set_buf(p.win, cur.buf)
-  vim.wo[p.win].winbar = " " .. name_of(cur)
+  vim.wo[p.win].winbar = ""
   p.visible = true
   watch(p.win, "bottom")
   watch(p.side, "bottom")
@@ -574,7 +576,6 @@ function M.select(kind, id)
   end
   local p = panel[kind]
   vim.api.nvim_win_set_buf(p.win, t.buf)
-  vim.wo[p.win].winbar = " " .. name_of(t)
   if kind == "float" then
     local g = read_geom()
     set_float_wins(g, g.row, name_of(t))
@@ -702,10 +703,10 @@ function M.setup()
           relative = "editor",
           style = "minimal",
           width = g.sw,
-          height = g.side_h,
+          height = g.h,
           row = g.row,
           col = g.col,
-          border = "none",
+          border = "rounded",
         })
       end
       if is_win(p.win) then
@@ -715,7 +716,7 @@ function M.setup()
           width = g.w,
           height = g.h,
           row = g.row,
-          col = g.col + g.sw,
+          col = g.col + g.sw + 2,
           border = "rounded",
         })
       end

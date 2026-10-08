@@ -134,7 +134,25 @@ return {
       indent = { enabled = true },
       input = { enabled = true },
       notifier = { enabled = true, timeout = 3000 },
-      picker = { enabled = true, ui_select = true },
+      picker = {
+        enabled = true,
+        ui_select = true,
+        -- 全局：所有选择器都能用 Alt+J/K 上下选择（输入框里也不用先打字）
+        win = {
+          input = {
+            keys = {
+              ["<M-j>"] = { "list_down", mode = { "i", "n" } },
+              ["<M-k>"] = { "list_up", mode = { "i", "n" } },
+            },
+          },
+          list = {
+            keys = {
+              ["<M-j>"] = "list_down",
+              ["<M-k>"] = "list_up",
+            },
+          },
+        },
+      },
       quickfile = { enabled = true },
       scope = { enabled = true },
       scroll = { enabled = true },

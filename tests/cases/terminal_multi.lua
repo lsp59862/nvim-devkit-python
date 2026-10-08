@@ -25,6 +25,20 @@ lib.ok("侧边栏：shell 简名 + 当前高亮", (function()
   local lines = side_lines("float")
   return #lines == 1 and lines[1]:find("bash", 1, true) ~= nil and lines[1]:find("▸", 1, true) ~= nil
 end)(), vim.inspect(side_lines("float")))
+lib.ok("侧边栏有圆角包边", (function()
+  local w = term.side_win("float")
+  local b = w and vim.api.nvim_win_get_config(w).border
+  return type(b) == "table" and #b == 8
+end)())
+lib.ok("当前项高亮组生效（NvkitTermCurrent）", (function()
+  local marks = vim.api.nvim_buf_get_extmarks(term.side_buf("float"), -1, 0, -1, { details = true })
+  for _, m in ipairs(marks) do
+    if m[4] and m[4].hl_group == "NvkitTermCurrent" then
+      return true
+    end
+  end
+  return false
+end)())
 
 term.summon("float")
 vim.wait(400)
@@ -38,6 +52,10 @@ lib.ok("tb 创建底部面板", term.count("bottom") == 1 and term.visible("bott
 lib.ok("底部主窗是 split（relative=''）", (function()
   local w = term.main_win("bottom")
   return w ~= nil and vim.api.nvim_win_get_config(w).relative == ""
+end)())
+lib.ok("底部不再显示名字栏（只在侧边栏）", (function()
+  local w = term.main_win("bottom")
+  return w ~= nil and vim.wo[w].winbar == ""
 end)())
 
 term.new_like_current()
