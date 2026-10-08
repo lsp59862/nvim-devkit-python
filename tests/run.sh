@@ -76,6 +76,7 @@ run_case() {
 
 # 顺序有依赖：session_save 必须在 session_load 之前；退出类放最后
 run_case winbuf_file 0
+run_case keymaps_alt 0
 run_case winbuf_typed_q 0
 run_case winbuf_typed_qbang 0
 run_case winbuf_typed_wq 0
