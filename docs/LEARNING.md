@@ -106,7 +106,7 @@
 - 练习：写坏一段代码 → 用 `:earlier 2m` 救回 → 再用 undotree 精确挑回某个中间版本
 
 ### Day 6 — 终端与 opencode 入门
-- `<C-/>` 浮动终端；终端里 `<Esc><Esc>` 回普通模式
+- 终端统一 `<leader>t*`：`tt` 浮动开关（如 `2tt` 第二台）· `tn` 新建 · `tb` 底部 · `tl` 列表（Enter 切换 / `<C-d>` 杀 / `<C-n>` 新建）；终端里 `<Esc><Esc>` 回普通模式，`q` 隐藏不杀进程
 - `<leader>oa`：输入问题，`@this` 自动带上光标处上下文
 - `<leader>ot`：右侧 opencode 面板开关；`<leader>os`：内置动作面板（解释/修复/审查等）
 - 练习：让 opencode 解释当前函数、修复一个 lint 错误，并在 diff 里接受/拒绝
@@ -219,11 +219,13 @@
 | `<leader>m*` | Jupyter | `mi` `ml` `mv` `mr` `mo` |
 | `<leader>g*` | Git | `gg`（lazygit）`gs` `gr` `gp` `gb` |
 | `<leader>o*` | opencode | `oa` `os` `ot` `op` `of` |
+| `<leader>t*` | 终端 | `tt` 浮动 · `tn` 新建 · `tb` 底部 · `tl` 列表 |
 | `<leader>q*` | 会话 | `qs` `ql` `qd` `qe` |
 | `<leader>r*` | 渲染 | `rt`（PDF 图片模式） |
 | `Ctrl-g` | **恐慌重置** | 任何时候按 |
 | `s` / `S` | Flash 跳转 / 选节点 | |
 | 插入模式 | 补全（blink.cmp） | Enter 接受 · Tab/S-Tab 下/上一项 · Esc/C-e 取消预览 · C-y 接受 |
+| 插入模式 | 词级删除 | `C-w`/`C-BS` 删前词 · `C-Del` 删后词 · `C-u` 删到行首 |
 | `g` `z` `[` `]` `<C-w>` | 等 200ms 看 which-key 提示 | |
 
 ## 6. 内置资源

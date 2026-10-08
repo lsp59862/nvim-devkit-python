@@ -47,6 +47,7 @@
 - **tab 工作区隔离**：每个 tab 的文件列表相互独立（`<Tab>`/`:bnext`/`<leader>,` 只作用于当前 tab；`<C-Tab>` / `<C-S-Tab>` 切换）；同一文件跨 tab 仍是同一个 buffer（undo/修改共享）
 - **启动页**：`r` 恢复会话 · `q` 与 `:q` 一致（退出；多 tab 时只关当前 tab）——会话只在退出时自动存，且当时还要有文件才存；有存档时启动页会提示，`NVIM_DEVKIT_AUTORESTORE=1` 可自动恢复
 - **补全菜单**（blink.cmp）：打字自动弹；Enter 接受 · Tab / S-Tab 下一项/上一项 · Esc 或 C-e 取消预览（↑/↓ 浏览会把候选写进正文，Esc/C-e 可撤销；C-y 也能接受）
+- **词级删除**（VS Code 式）：插入模式 `<C-w>` / `<C-BS>` 删前一个词（部分终端把 Ctrl+Backspace 发成 `^H`，已自动兜底）、`<C-Del>` 删后一个词、`<C-u>` 删到行首
 - **官方教程**：`:Tutor`（按系统语言自动；中文系统即中文版，30 分钟入门）
 
 | 想做什么 | 输入 | 布局 | 文件 |
@@ -74,6 +75,7 @@
 | `<leader>m*` | Jupyter | `mi` 初始化 · `ml` 跑行 · `mv` 跑选中 · `mr` 重跑 · `mo/mh` 显示隐藏 |
 | `<leader>g*` | Git | `gg` lazygit · `gs` 暂存块 · `gr` 撤销块 · `gp` 预览 · `gb` blame |
 | `<leader>o*` | opencode | `oa` 提问（带上下文）· `os` 动作面板 · `ot` 面板开关 · `of` 整文件 |
+| `<leader>t*` | 终端 | `tt` 浮动开关（`2tt` 第 2 台）· `tn` 新建 · `tb` 底部 · `tl` 列表 |
 | `<leader>q*` | 会话 / 主页 | `qs` 恢复本目录 · `ql` 恢复最近 · `qd` 停自动保存 · `qe` 重新开启 · `qh` 回启动页 |
 | `<leader>r*` | 渲染 | `rt` PDF 图片模式（Kitty 终端） |
 
@@ -89,7 +91,7 @@
 | `Tab` / `<S-Tab>` | 切 buffer | `gc` `gcc` | 注释 |
 | `sa` `sd` `sr` | 加/删/换包围（mini.surround） | `<M-h/j/k/l>` | 移动行/块（mini.move） |
 | `daa` `cia` | 删/改一个参数（mini.ai） | `af` / `if` | 整个/内部函数（treesitter） |
-| `s` 后输入词 | 任意位置三键直达 | `<C-/>` / `<C-_>` | 浮动终端 |
+| `s` 后输入词 | 任意位置三键直达 | `<leader>tt` | 浮动终端（`2tt` 第二台） |
 | `<C-Tab>` / `<C-S-Tab>` | 下/上一个 tab | `:exit` | 无条件退出 nvim |
 | `<M-1>` / `Alt+1` | 行首（普通/插入通用） | `<M-0>` / `Alt+0` | 行末（普通/插入通用） |
 
@@ -126,6 +128,7 @@
 - PDF：`:e paper.pdf` 自动转文本，`]p/[p` 翻页；Kitty 终端下 `<leader>rt` 切图片模式
 
 ### 终端速记
+- 管理：`<leader>tt` 浮动开关（数字前缀多开，如 `2tt`）· `<leader>tn` 新建 · `<leader>tb` 底部 · `<leader>tl` 列表（Enter 切换，`<C-d>` 杀进程，`<C-n>` 新建）；终端里 `q` 只隐藏、进程不退出
 - 只做编辑/调试：任何终端都行
 - 要看图（matplotlib / Markdown 内嵌图 / PDF 图片模式）：
   - **WezTerm**（推荐）：新版默认开启图形协议，无需配置；Windows 下图片不显示时用 `wezterm ssh` 连接（绕 ConPTY）

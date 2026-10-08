@@ -26,12 +26,13 @@ cd ~/nvim-devkit
 - nvim 可执行文件查找顺序：`NVIM_DEVKIT_BIN` 环境变量 → `~/.local/share/nvim-devkit/nvim/bin/nvim` → PATH 中的 `nvim`
 - 失败时完整日志留在 `/tmp/nvim-devkit-tests/log-<用例>.txt`
 
-## 覆盖范围（26 个用例 / 80 项断言）
+## 覆盖范围（29 个用例 / 100 项断言）
 
 | 用例 | 覆盖行为 |
 | --- | --- |
 | `winbuf_file` | `:q`（单窗切换 / 单文件回 dashboard / 同文件分屏 / 多窗不同文件）· `:bd`（单窗最后文件 / 多窗关窗口 / dashboard 上拒绝）· `<leader>wd`（单窗拒绝 / 多窗关窗 / dashboard 拒绝）· 无名 buffer · 键位映射存在性 |
 | `keymaps_alt` | `Alt+1` / `Alt+0` 行首 / 行末：映射存在（普通+插入）、插入 rhs 语义、普通模式落点、插入模式落点（插入未中断由"输入字符的落点"证明） |
+| `keymaps_ctrl_bs` | 词级删除：`<C-BS>`（插入/命令行）与 `<C-H>` 回退删前词 · `<C-Del>` 删后词（词尾含空格 / 词首只删本词） |
 | `winbuf_typed_q` | 真实按键 `:q` → dashboard 且程序不退出 |
 | `winbuf_typed_qbang` | 真实按键 `:q!` → 丢弃修改并回 dashboard |
 | `winbuf_typed_wq` / `winbuf_typed_wq_multi` / `winbuf_typed_x` | `:wq` / `:x` 先写盘再关闭；有其它文件时切换到它 |
@@ -48,6 +49,8 @@ cd ~/nvim-devkit
 | `session_restore` | 自动恢复（opt-in）门闸：默认关 · headless 永不恢复 · 开关/参数/UI/快照四条件真值表 · `session_file` 有无快照两态 |
 | `completion_keys` | 补全键位契约：Enter=接受 · Tab/S-Tab=下/上一项 · Esc=取消预览 · C-y 仍可接受 · normal Tab 不受影响 |
 | `tutor` | 官方教程未被禁用：`:Tutor` 存在且能打开（按 v:lang 自动选中文版） |
+| `terminal_multi` | 终端多开：浮动位置（relative≈editor）· 编号递增与复用 · `kill` 真正结束进程 |
+| `terminal_list` | 终端列表：条目按编号排序含命令 · picker 参数（items/confirm/`<C-d>` 杀/`<C-n>` 新建）· `<leader>t*` 映射且旧 `<C-/>` 已移除 |
 | `opencode_keys` | opencode 插件 1.x 公开 API 存在性（`ask/select/prompt/operator`，无 `toggle`）· `<leader>ot` 映射存在（n/t）· stub 验证调用 `snacks.terminal.toggle("opencode --port", 右侧面板)` |
 | `dashboard_keys` | 启动页按键契约：`r` = 恢复会话（persistence.load）· `q` = `:q`（防回退到 snacks 默认的 `<cmd>bd`）· buffer 内映射存在 |
 | `winbuf_exit_dashboard` | 退出类：dashboard 上 `:q` → 退出 nvim |
@@ -68,7 +71,9 @@ cd ~/nvim-devkit
 | 会话自动恢复（opt-in） | 默认关；仅"开开关 + 无参数 + 有 UI + 有快照"时恢复；headless 永不动作；启动页有快照时显示提示行 |
 | 启动页按键 | 普通键 `r` 恢复会话；`q` 与 `:q` 一致（单 tab 退出 / 多 tab 关当前 tab） |
 | 补全键位（blink.cmp） | 插入模式 Enter 接受 / Tab、S-Tab 浏览 / Esc、C-e 取消预览；normal 的 Tab 仍为 bnext |
+| 词级删除 | 插入/命令行 `<C-BS>` 与插入 `<C-H>` 删前词；插入 `<C-Del>` 按 VS Code 语义删后词（跳过空格，不吃下一个词） |
 | 官方教程 | `:Tutor` 可用（runtime 的 tutor 插件未被 lazy 禁用） |
+| 终端管理 | 终端只用 `<leader>t*` 开（无 Ctrl 开法）；浮动/底部/多开（数字前缀）· 列表切换 · `<C-d>` 杀进程 · 隐藏不杀进程 |
 
 ## 新增用例
 
