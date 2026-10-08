@@ -26,7 +26,7 @@ cd ~/nvim-devkit
 - nvim 可执行文件查找顺序：`NVIM_DEVKIT_BIN` 环境变量 → `~/.local/share/nvim-devkit/nvim/bin/nvim` → PATH 中的 `nvim`
 - 失败时完整日志留在 `/tmp/nvim-devkit-tests/log-<用例>.txt`
 
-## 覆盖范围（30 个用例 / 119 项断言）
+## 覆盖范围（30 个用例 / 124 项断言）
 
 | 用例 | 覆盖行为 |
 | --- | --- |
@@ -51,7 +51,7 @@ cd ~/nvim-devkit
 | `tutor` | 官方教程未被禁用：`:Tutor` 存在且能打开（按 v:lang 自动选中文版） |
 | `terminal_multi` | 终端面板：`tp`/`tb` 呼出与自动创建（再按收起不新建）· 侧边栏 shell 简名、圆角包边、当前项高亮（`NvkitTermCurrent`）· 底部不再显示名字栏 · `Alt+N` 同类新建 · 删除不重排编号 · `Alt+R` 重命名 · `kill` 自动切换/最后收起 |
 | `terminal_cycle` | 同类循环：3 台浮动正向/反向/回绕 · 底部单台不跨类 · 浮动循环不影响底部 · `<M-j>/<M-k>/<M-n>/<M-r>` 映射 |
-| `terminal_list` | 列表区分 `[浮]/[底]/[面板]` · 名字为简名（无绝对路径）· 所有 picker 的 `Alt+J`/`Alt+K` 选择键已配置 · picker 参数（format/confirm/`<C-d>` 杀）· 新键位 `tp/tb/tl` 且旧 `tt/tn` 已移除 |
+| `terminal_list` | 列表区分 `[浮]/[底]/[面板]` · 名字为简名（无绝对路径）· 所有 picker 的 `Alt+J`/`Alt+K` 选择键已配置 · picker 参数（format/confirm/`<C-d>` 杀）· 确认后 picker 必须收起（浮窗/底部两条路径，防残留）· 新键位 `tp/tb/tl` 且旧 `tt/tn` 已移除 |
 | `opencode_keys` | opencode 插件 1.x 公开 API 存在性（`ask/select/prompt/operator`，无 `toggle`）· `<leader>ot` 映射存在（n/t）· stub 验证调用 `snacks.terminal.toggle("opencode --port", 右侧面板)` |
 | `dashboard_keys` | 启动页按键契约：`r` = 恢复会话（persistence.load）· `q` = `:q`（防回退到 snacks 默认的 `<cmd>bd`）· buffer 内映射存在 |
 | `winbuf_exit_dashboard` | 退出类：dashboard 上 `:q` → 退出 nvim |
