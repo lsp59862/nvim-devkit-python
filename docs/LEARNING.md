@@ -92,7 +92,10 @@
 - `/` `n` `N`（本配置会居中）、`*`（搜光标词）
 - `<leader>/` 全项目搜索、`<leader>sw` 搜当前词、`<leader>sd` 诊断、`<leader>sk` 所有键位
 - 替换：`:s/a/b/g`、`:%s/a/b/gc`（`c` 逐个确认，`inccommand` 实时预览）
-- 练习：在全项目里找到一个函数的所有调用点并逐个跳转
+- **练习场（12 题带答案，磨完即过关）**：`docs/practice/day4/README.md`
+  ```bash
+  cd ~/nvim-devkit/docs/practice/day4 && nvim-devkit
+  ```
 
 ### Day 5 — 撤销时间线与 Git 基本盘
 - `u / Ctrl-r`、`<leader>uu` 打开撤销树（`j/k` 浏览、`Enter` 预览、`T` 时间戳）
