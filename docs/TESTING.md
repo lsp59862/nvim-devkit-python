@@ -25,11 +25,12 @@ cd ~/nvim-devkit
 - nvim 可执行文件查找顺序：`NVIM_DEVKIT_BIN` 环境变量 → `~/.local/share/nvim-devkit/nvim/bin/nvim` → PATH 中的 `nvim`
 - 失败时完整日志留在 `/tmp/nvim-devkit-tests/log-<用例>.txt`
 
-## 覆盖范围（19 个用例 / 38 项断言）
+## 覆盖范围（21 个用例 / 44 项断言）
 
 | 用例 | 覆盖行为 |
 | --- | --- |
 | `winbuf_file` | `:q`（单窗切换 / 单文件回 dashboard / 同文件分屏 / 多窗不同文件）· `:bd`（单窗最后文件 / 多窗关窗口 / dashboard 上拒绝）· `<leader>wd`（单窗拒绝 / 多窗关窗 / dashboard 拒绝）· 无名 buffer · 键位映射存在性 |
+| `keymaps_alt` | `Alt+1` / `Alt+0` 行首 / 行末：映射存在（普通+插入）、插入 rhs 语义、普通模式落点、插入模式落点（插入未中断由"输入字符的落点"证明） |
 | `winbuf_typed_q` | 真实按键 `:q` → dashboard 且程序不退出 |
 | `winbuf_typed_qbang` | 真实按键 `:q!` → 丢弃修改并回 dashboard |
 | `winbuf_typed_wq` / `winbuf_typed_wq_multi` / `winbuf_typed_x` | `:wq` / `:x` 先写盘再关闭；有其它文件时切换到它 |
@@ -42,6 +43,7 @@ cd ~/nvim-devkit
 | `scope_quit` | tab 内 `:q` 回 dashboard，其它 tab 不受影响 |
 | `scope_tabclose` | "关过 tab 再新增"后序列化不错位 |
 | `scope_session_save` / `scope_session_load` | 各 tab 文件归属随会话保存/恢复（含关过 tab 的场景） |
+| `opencode_keys` | opencode 插件 1.x 公开 API 存在性（`ask/select/prompt/operator`，无 `toggle`）· `<leader>ot` 映射存在（n/t）· stub 验证调用 `snacks.terminal.toggle("opencode --port", 右侧面板)` |
 | `winbuf_exit_dashboard` | 退出类：dashboard 上 `:q` → 退出 nvim |
 | `winbuf_exit_command` | 退出类：`:exit` 有无未保存修改都直接退出 |
 

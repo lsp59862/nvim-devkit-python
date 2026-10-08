@@ -18,7 +18,7 @@ nvim-devkit 由作者独立开发与维护，**不接受来自外部的 Pull Req
 1. 任何交互行为的修改必须跑行为测试：
 
    ```bash
-   ./tests/run.sh          # 19 个用例 / 38 项断言，必须全部通过
+   ./tests/run.sh          # 21 个用例 / 44 项断言，必须全部通过
    scripts/checkhealth.sh  # 硬错误必须为 0
    ```
 

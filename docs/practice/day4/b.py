@@ -4,13 +4,13 @@ RESULT_LIMIT = 10
 result_count = 0
 
 
-def collect(values):
-    global result_count
+def collect(values): # This is notation of func "collct"
+    global rsult_count
     result_count = len(values)
     return values[:RESULT_LIMIT]
 
 
-def dedup(values):
+def dedup(values): 
     seen = set()
     result = []
     for v in values:
@@ -18,6 +18,11 @@ def dedup(values):
             result.append(v)
             seen.add(v)
     return result
+
+def test_dedup:
+    pass
+
+
 
 
 # TODO: 给 collect 加类型注解

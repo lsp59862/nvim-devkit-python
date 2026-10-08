@@ -7,7 +7,7 @@
 1. **任何影响交互行为的功能修改**（`config/lua/nvim-devkit/**`、`config/lua/config/keymaps.lua`、
    `options.lua`、插件语义、`install.sh`/`uninstall.sh` 行为等），提交前必须运行：
    ```bash
-   ./tests/run.sh          # 行为测试（19 用例 / 38 断言），必须全部通过
+   ./tests/run.sh          # 行为测试（21 用例 / 44 断言），必须全部通过
    scripts/checkhealth.sh  # 健康检查，硬错误必须为 0
    ```
 2. 行为契约见 `README.md`（文件/窗口/tab 语义、dashboard、`:q`/`:bd`/`wd`/`:exit` 等）与 `docs/TESTING.md`。
