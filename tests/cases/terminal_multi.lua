@@ -1,69 +1,67 @@
--- 终端多开：同类互斥（一次只显示一台浮动/底部）、编号分配复用、kill 真正结束
+-- 终端面板：tp/tb 呼出与创建、侧边栏名字与高亮、Alt+N 同类新建、kill 自动切换/收起
 local lib = dofile((vim.env.NVIM_DEVKIT_TESTS or vim.fn.fnamemodify(debug.getinfo(1, "S").source:sub(2), ":p:h:h")) .. "/lib.lua")
 local term = require("nvim-devkit.term")
-local snacks_term = require("snacks.terminal")
+term.setup()
 
-local function count()
-  return #snacks_term.list()
-end
-local function visible_floats()
-  local n = 0
-  for _, t in ipairs(snacks_term.list()) do
-    if t:is_floating() then
-      n = n + 1
-    end
-  end
-  return n
-end
-local function visible_bottoms()
-  local n = 0
-  for _, t in ipairs(snacks_term.list()) do
-    if t:valid() and not t:is_floating() and vim.b[t.buf].nvkit_term_kind == "bottom" then
-      n = n + 1
-    end
-  end
-  return n
+local function side_lines(kind)
+  local buf = term.side_buf(kind)
+  return buf and vim.api.nvim_buf_get_lines(buf, 0, -1, false) or {}
 end
 
 lib.reset()
-lib.ok("初始无终端", count() == 0, "count=" .. count())
+lib.ok("初始无终端且面板收起",
+  term.count() == 0 and not term.visible("float") and not term.visible("bottom"),
+  ("n=%d f=%s b=%s"):format(term.count(), tostring(term.visible("float")), tostring(term.visible("bottom"))))
 
-term.open_float()
+term.summon("float")
 vim.wait(400)
-lib.ok("开 1 台浮动终端且可见", count() == 1 and visible_floats() == 1,
-  ("count=%d visible=%d"):format(count(), visible_floats()))
-local t1 = snacks_term.list()[1]
-lib.ok("是浮窗（relative≈editor）",
-  t1 and t1.win and vim.api.nvim_win_get_config(t1.win).relative ~= "",
-  t1 and t1.win and vim.api.nvim_win_get_config(t1.win).relative or "nil")
-lib.ok("next_count = 2", term.next_count() == 2, "next=" .. term.next_count())
+lib.ok("tp 创建并显示浮动面板", term.count("float") == 1 and term.visible("float"),
+  ("n=%d vis=%s"):format(term.count("float"), tostring(term.visible("float"))))
+lib.ok("浮动主窗是浮窗（relative≈editor）", (function()
+  local w = term.main_win("float")
+  return w ~= nil and vim.api.nvim_win_get_config(w).relative ~= ""
+end)())
+lib.ok("侧边栏：shell 简名 + 当前高亮", (function()
+  local lines = side_lines("float")
+  return #lines == 1 and lines[1]:find("bash", 1, true) ~= nil and lines[1]:find("▸", 1, true) ~= nil
+end)(), vim.inspect(side_lines("float")))
 
-term.open_float(term.next_count())
+term.summon("float")
 vim.wait(400)
-lib.ok("再开一台：列表 2 台但浮窗只显示 1 台", count() == 2 and visible_floats() == 1,
-  ("count=%d visible=%d"):format(count(), visible_floats()))
+lib.ok("再按 tp 收起且不新建", term.count("float") == 1 and not term.visible("float"),
+  ("n=%d vis=%s"):format(term.count("float"), tostring(term.visible("float"))))
 
-term.open_float()
-vim.wait(200)
-lib.ok("tt 一次关掉可见浮窗", count() == 2 and visible_floats() == 0,
-  ("count=%d visible=%d"):format(count(), visible_floats()))
-term.open_float()
-vim.wait(200)
-lib.ok("再 tt 唤回最近浮窗", visible_floats() == 1, "visible=" .. visible_floats())
-
-term.open_bottom()
-vim.wait(400)
-lib.ok("tb 开出底部终端（只 1 台可见）", count() == 3 and visible_bottoms() == 1,
-  ("count=%d bottoms=%d"):format(count(), visible_bottoms()))
-term.open_bottom()
-vim.wait(200)
-lib.ok("再 tb 关掉底部", visible_bottoms() == 0, "bottoms=" .. visible_bottoms())
-
-term.kill(1)
-term.kill(2)
-term.kill(3)
+term.summon("bottom")
 vim.wait(300)
-lib.ok("kill 后全部清理且编号 1 可复用", count() == 0 and term.next_count() == 1,
-  ("count=%d next=%d"):format(count(), term.next_count()))
+lib.ok("tb 创建底部面板", term.count("bottom") == 1 and term.visible("bottom"),
+  ("n=%d vis=%s"):format(term.count("bottom"), tostring(term.visible("bottom"))))
+lib.ok("底部主窗是 split（relative=''）", (function()
+  local w = term.main_win("bottom")
+  return w ~= nil and vim.api.nvim_win_get_config(w).relative == ""
+end)())
+
+term.new_like_current()
+vim.wait(300)
+local b = term.terms("bottom")
+lib.ok("Alt+N 在底部新建同类", term.count("bottom") == 2 and term.cur("bottom") == b[2].id,
+  ("n=%d cur=%s want=%s"):format(term.count("bottom"), tostring(term.cur("bottom")), tostring(b[2].id)))
+lib.ok("重名自动编号且当前在第二行", (function()
+  local lines = side_lines("bottom")
+  return #lines == 2 and lines[1]:find("bash 1", 1, true) ~= nil and lines[2]:find("▸", 1, true) ~= nil
+end)(), vim.inspect(side_lines("bottom")))
+
+term.kill(b[1].id)
+vim.wait(300)
+lib.ok("kill 后面板切到剩下那台", term.count("bottom") == 1 and term.cur("bottom") == b[2].id,
+  ("n=%d cur=%s"):format(term.count("bottom"), tostring(term.cur("bottom"))))
+term.kill(b[2].id)
+vim.wait(300)
+lib.ok("最后 kill 后面板收起", term.count("bottom") == 0 and not term.visible("bottom"),
+  ("n=%d vis=%s"):format(term.count("bottom"), tostring(term.visible("bottom"))))
+
+local f = term.terms("float")[1]
+term.kill(f.id)
+vim.wait(400)
+lib.ok("全部清理", term.count() == 0, "n=" .. term.count())
 
 lib.finish()

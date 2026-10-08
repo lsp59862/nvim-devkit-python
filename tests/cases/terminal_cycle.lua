@@ -1,44 +1,57 @@
--- 终端循环切换：<M-j> 上一个 / <M-k> 下一个（共享列表，含任意类型终端）
+-- 终端同类循环：<M-j>/<M-k> 只在当前面板内循环，<M-n> 新建同类
 local lib = dofile((vim.env.NVIM_DEVKIT_TESTS or vim.fn.fnamemodify(debug.getinfo(1, "S").source:sub(2), ":p:h:h")) .. "/lib.lua")
 local term = require("nvim-devkit.term")
-local snacks_term = require("snacks.terminal")
+term.setup()
 
-lib.ok("<M-j>/<M-k> 终端模式映射存在",
+lib.ok("<M-j>/<M-k>/<M-n> 终端模式映射存在",
   vim.fn.maparg("<M-j>", "t", false, true).callback ~= nil
-    and vim.fn.maparg("<M-k>", "t", false, true).callback ~= nil)
-
-local function cur_id()
-  local cur = vim.api.nvim_get_current_buf()
-  for _, e in ipairs(term.entries()) do
-    if e.buf == cur then
-      return e.id
-    end
-  end
-end
+    and vim.fn.maparg("<M-k>", "t", false, true).callback ~= nil
+    and vim.fn.maparg("<M-n>", "t", false, true).callback ~= nil)
 
 lib.reset()
-term.cycle(1) -- 没有终端时自动开一台
-vim.wait(400)
-lib.ok("无终端时 cycle 自动开一台", #snacks_term.list() == 1, "count=" .. #snacks_term.list())
-
-snacks_term.toggle("sleep 30", { count = 2, win = { position = "float", width = 0.6, height = 0.4 } })
+term.summon("float")
 vim.wait(300)
-snacks_term.toggle("sleep 30", { count = 3, win = { position = "float", width = 0.6, height = 0.4 } })
-vim.wait(300)
+term.new_like_current()
+vim.wait(200)
+term.new_like_current()
+vim.wait(200)
+local f = term.terms("float")
+lib.ok("Alt+N 连开 3 台浮动且当前为最后一台", term.count("float") == 3 and term.cur("float") == f[3].id,
+  ("n=%d cur=%s"):format(term.count("float"), tostring(term.cur("float"))))
 
-term.show(1)
-lib.ok("show(1) 后当前是 #1", cur_id() == 1, "cur=" .. tostring(cur_id()))
-
+term.select("float", f[1].id)
+vim.wait(100)
 term.cycle(1)
-lib.ok("cycle 下一个 → #2", cur_id() == 2, "cur=" .. tostring(cur_id()))
+vim.wait(100)
+lib.ok("float 内下一个 → #2", term.cur("float") == f[2].id, tostring(term.cur("float")))
 term.cycle(1)
-lib.ok("cycle 下一个 → #3", cur_id() == 3, "cur=" .. tostring(cur_id()))
+lib.ok("float 内下一个 → #3", term.cur("float") == f[3].id, tostring(term.cur("float")))
 term.cycle(1)
-lib.ok("cycle 回绕 → #1", cur_id() == 1, "cur=" .. tostring(cur_id()))
+lib.ok("float 内回绕 → #1", term.cur("float") == f[1].id, tostring(term.cur("float")))
 term.cycle(-1)
-lib.ok("cycle 上一个 → #3", cur_id() == 3, "cur=" .. tostring(cur_id()))
+lib.ok("float 内上一个 → #3", term.cur("float") == f[3].id, tostring(term.cur("float")))
 
-term.kill(1)
-term.kill(2)
-term.kill(3)
+term.summon("bottom")
+vim.wait(300)
+local b = term.terms("bottom")[1]
+term.select("bottom", b.id)
+vim.wait(100)
+term.cycle(1)
+vim.wait(100)
+lib.ok("底部单台循环不跨类", term.cur("bottom") == b.id and term.cur("float") == f[3].id,
+  ("bcur=%s fcur=%s"):format(tostring(term.cur("bottom")), tostring(term.cur("float"))))
+
+term.select("float", f[1].id)
+vim.wait(100)
+term.cycle(1)
+lib.ok("浮动循环不影响底部", term.cur("float") == f[2].id and term.cur("bottom") == b.id,
+  ("fcur=%s bcur=%s"):format(tostring(term.cur("float")), tostring(term.cur("bottom"))))
+
+term.kill(f[1].id)
+term.kill(f[2].id)
+term.kill(f[3].id)
+term.kill(b.id)
+vim.wait(400)
+lib.ok("全部清理", term.count() == 0, "n=" .. term.count())
+
 lib.finish()

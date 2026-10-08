@@ -1,249 +1,650 @@
--- 终端管理：统一 <leader>t*（浮动 / 底部 / 列表），opencode 面板独立于 <leader>ot
+-- 终端面板（VS Code 式）：浮动 / 底部 各一个面板 = 侧边栏 + 终端区
 --
--- snacks.terminal 以 cmd + cwd + 编号(count) 区分实例，全部终端共享同一张列表
--- （浮动 / 底部 / opencode 面板都在里面）：
---   · 数字前缀操作指定编号（如 2tt）；tt / tb 不带前缀时开关各自"最近使用"的那台
---   · 隐藏（q）不杀进程，列表里可切回；kill 才真正结束进程
---   · <M-j>/<M-k> 在共享列表里循环切换（含 opencode 面板）
+--  · <leader>tp / <leader>tb：呼出/收起对应面板；没有终端时自动创建一台
+--  · <leader>tl：终端列表（[浮]/[底]/[面板]，可切换、<C-d> 杀进程）
+--  · 终端模式 <M-j>/<M-k>：只在当前面板内循环；<M-n>：新建一台同类终端
+--  · 侧边栏显示 shell 简名（重名自动编号）并高亮当前；鼠标点击 / <CR> 切换，q 收起
+--  · 浮动面板有淡入淡出动画（winblend）；opencode 面板不归此模块管（<leader>ot）
 local M = {}
 
-M.FLOAT = { position = "float", width = 0.8, height = 0.8, border = "rounded" }
-M.BOTTOM = { position = "bottom", height = 0.3 }
+local uv = vim.uv or vim.loop
 
-local last = { float = nil, bottom = nil }
+local FLOAT_RATIO = { w = 0.8, h = 0.8 }
+local BOTTOM_RATIO = 0.3
+local SIDE_MIN, SIDE_MAX = 12, 20
+local FADE = { 70, 45, 25, 10, 0 }
+local NS = vim.api.nvim_create_namespace("nvkit_term_side")
 
-local function term_list()
-  return require("snacks.terminal").list()
+---@class DevkitTerm
+---@field id integer
+---@field kind "float"|"bottom"
+---@field buf integer
+---@field job integer
+---@field name string
+
+local terms = {} ---@type DevkitTerm[]
+local id_seq = 1
+local esc_timers = {}
+
+local panel = {
+  float = { visible = false, win = nil, side = nil, cur = nil, closing = false },
+  bottom = { visible = false, win = nil, side = nil, cur = nil, closing = false },
+}
+local side_buffers = { float = nil, bottom = nil }
+
+local function is_win(w)
+  return w ~= nil and vim.api.nvim_win_is_valid(w)
 end
 
---- 当前存活终端，按编号排序
-function M.entries()
-  local out = {}
-  for _, t in ipairs(term_list()) do
-    local info = vim.b[t.buf].snacks_terminal or {}
-    out[#out + 1] = {
-      id = info.id or 1,
-      cmd = info.cmd,
-      cwd = info.cwd or "",
-      title = vim.b[t.buf].term_title or "",
-      buf = t.buf,
-    }
+local function in_current_tab(w)
+  return is_win(w) and vim.api.nvim_win_get_tabpage(w) == vim.api.nvim_get_current_tabpage()
+end
+
+local function get(id)
+  for _, t in ipairs(terms) do
+    if t.id == id then
+      return t
+    end
   end
-  table.sort(out, function(a, b)
-    return a.id < b.id
-  end)
+end
+
+local function term_of_buf(buf)
+  for _, t in ipairs(terms) do
+    if t.buf == buf then
+      return t
+    end
+  end
+end
+
+local function side_width()
+  return math.min(SIDE_MAX, math.max(SIDE_MIN, math.floor(vim.o.columns * 0.16)))
+end
+
+local function float_geom()
+  local cols, lines = vim.o.columns, vim.o.lines
+  local h = math.max(10, math.floor(lines * FLOAT_RATIO.h))
+  local w = math.max(30, math.floor(cols * FLOAT_RATIO.w) - side_width())
+  local sw = side_width()
+  local col = math.max(0, math.floor((cols - (w + sw)) / 2))
+  local row = math.max(0, math.floor((lines - h) / 2) - 1)
+  return { row = row, col = col, h = h, w = w, sw = sw }
+end
+
+--- 同类重名时追加序号（bash / bash 2）
+local function display_names(kind)
+  local group = {}
+  for _, t in ipairs(terms) do
+    if t.kind == kind then
+      group[#group + 1] = t
+    end
+  end
+  local total, seen, out = {}, {}, {}
+  for _, t in ipairs(group) do
+    total[t.name] = (total[t.name] or 0) + 1
+  end
+  for _, t in ipairs(group) do
+    seen[t.name] = (seen[t.name] or 0) + 1
+    out[t.id] = total[t.name] > 1 and (t.name .. " " .. seen[t.name]) or t.name
+  end
   return out
 end
 
---- 最小空闲编号（新建终端用）
-function M.next_count()
-  local used = {}
-  for _, e in ipairs(M.entries()) do
-    used[e.id] = true
-  end
-  local i = 1
-  while used[i] do
-    i = i + 1
-  end
-  return i
-end
+-- ── 查询接口（测试与列表共用）──────────────────────────
 
-local function slot_alive(id)
-  if id == nil then
-    return false
+function M.terms(kind)
+  if not kind then
+    return vim.deepcopy(terms)
   end
-  for _, e in ipairs(M.entries()) do
-    if e.id == id then
-      return true
-    end
-  end
-  return false
-end
-
-local function term_kind(t)
-  return vim.b[t.buf].nvkit_term_kind
-end
-
---- 同类终端是否正在显示（浮动含外部浮窗；底部只认本模块创建的）
-local function is_kind(t, kind)
-  if kind == "float" then
-    return t:is_floating() or (t:valid() and term_kind(t) == "float")
-  end
-  return t:valid() and not t:is_floating() and term_kind(t) == "bottom"
-end
-
-local function visible_of_kind(kind)
   local out = {}
-  for _, t in ipairs(term_list()) do
-    if is_kind(t, kind) then
+  for _, t in ipairs(terms) do
+    if t.kind == kind then
       out[#out + 1] = t
     end
   end
   return out
 end
 
---- 同类互斥：显示某台时隐藏其它同类，避免多个浮窗/底部分屏同时占屏
-local function hide_others(kind, keep_buf)
-  for _, t in ipairs(visible_of_kind(kind)) do
-    if t.buf ~= keep_buf then
-      t:hide()
+function M.count(kind)
+  return #M.terms(kind)
+end
+
+function M.visible(kind)
+  local p = panel[kind]
+  return in_current_tab(p.win)
+end
+
+function M.cur(kind)
+  return panel[kind].cur
+end
+
+function M.main_win(kind)
+  return panel[kind].win
+end
+
+function M.side_win(kind)
+  return panel[kind].side
+end
+
+function M.side_buf(kind)
+  return side_buffers[kind]
+end
+
+function M.current_kind()
+  local t = term_of_buf(vim.api.nvim_get_current_buf())
+  return t and t.kind or nil
+end
+
+-- ── 终端进程 ─────────────────────────────────────────
+
+local function setup_term_buffer(t)
+  local buf = t.buf
+  vim.keymap.set("n", "q", function()
+    M.hide(t.kind)
+  end, { buffer = buf, desc = "收起终端面板" })
+  local esc = vim.api.nvim_replace_termcodes("<Esc>", true, false, true)
+  vim.keymap.set("t", "<Esc>", function()
+    local timer = esc_timers[buf]
+    if timer and timer:is_active() then
+      timer:stop()
+      vim.cmd("stopinsert")
+      return ""
     end
-  end
+    esc_timers[buf] = esc_timers[buf] or uv.new_timer()
+    esc_timers[buf]:start(200, 0, function() end)
+    return esc
+  end, { buffer = buf, expr = true, desc = "双击 Esc 进入普通模式" })
 end
 
---- 不带编号时开关"当前可见"的同类终端（没有则唤回最近的/新建）；
---- 带编号则精确操作指定槽位
-local function toggle_slot(kind, count)
-  if count == nil then
-    local vis = visible_of_kind(kind)
-    if #vis > 0 then
-      for _, t in ipairs(vis) do
-        t:hide()
-      end
-      return
-    end
-    if not slot_alive(last[kind]) then
-      last[kind] = M.next_count()
-    end
-    count = last[kind]
+--- 新建一台终端（默认浮动）；返回实例
+--- termopen 只能作用于当前 buffer：在临时浮窗里开好再关窗，终端藏进隐藏 buffer
+function M.create(kind)
+  kind = kind or "float"
+  local buf = vim.api.nvim_create_buf(false, false)
+  local tmp = vim.api.nvim_open_win(buf, true, {
+    relative = "editor",
+    style = "minimal",
+    width = 1,
+    height = 1,
+    row = 0,
+    col = 0,
+  })
+  local job = vim.fn.termopen(vim.o.shell, {
+    cwd = vim.fn.getcwd(),
+    on_exit = function()
+      vim.schedule(function()
+        M.remove(buf)
+      end)
+    end,
+  })
+  if vim.api.nvim_win_is_valid(tmp) then
+    pcall(vim.api.nvim_win_close, tmp, true)
   end
-  last[kind] = count
-  local snacks_term = require("snacks.terminal")
-  local win = kind == "float" and M.FLOAT or M.BOTTOM
-  snacks_term.toggle(nil, { count = count, win = vim.deepcopy(win) })
-  local t = snacks_term.get(nil, { count = count, win = vim.deepcopy(win) })
-  if t then
-    vim.b[t.buf].nvkit_term_kind = kind
-    hide_others(kind, t.buf)
+  if job <= 0 then
+    pcall(vim.api.nvim_buf_delete, buf, { force = true })
+    return nil
   end
+  vim.bo[buf].bufhidden = "hide"
+  local t = { id = id_seq, kind = kind, buf = buf, job = job, name = vim.fn.fnamemodify(vim.o.shell, ":t") }
+  id_seq = id_seq + 1
+  terms[#terms + 1] = t
+  setup_term_buffer(t)
+  if panel[kind].cur == nil then
+    panel[kind].cur = t.id
+  end
+  return t
 end
 
-function M.open_float(count)
-  toggle_slot("float", count)
-end
-
-function M.open_bottom(count)
-  toggle_slot("bottom", count)
-end
-
---- 聚焦某编号终端；已在其中则隐藏（列表 Enter 用）
-function M.focus(count)
-  local cur = vim.api.nvim_get_current_buf()
-  for _, t in ipairs(term_list()) do
-    local info = vim.b[t.buf].snacks_terminal or {}
-    if (info.id or 1) == count then
-      if t:valid() and cur == t.buf then
-        t:hide()
-        return true
-      end
-      return M.show(count)
-    end
-  end
-  return false
-end
-
---- 显示并聚焦（不隐藏当前，循环切换用；同类互斥）
-function M.show(count)
-  for _, t in ipairs(term_list()) do
-    local info = vim.b[t.buf].snacks_terminal or {}
-    if (info.id or 1) == count then
-      local kind = term_kind(t) or (t:is_floating() and "float" or nil)
-      if kind then
-        hide_others(kind, t.buf)
-      end
-      t:show():focus()
-      return true
-    end
-  end
-  return false
-end
-
---- 共享列表里循环切换；delta=1 下一个 / -1 上一个（含 opencode 面板）
-function M.cycle(delta)
-  local entries = M.entries()
-  if #entries == 0 then
-    M.open_float()
-    return
-  end
-  local cur = vim.api.nvim_get_current_buf()
+--- 从注册表移除（进程退出或 kill 共用）
+function M.remove(buf, delete_buf)
   local idx
-  for i, e in ipairs(entries) do
-    if e.buf == cur then
+  for i, t in ipairs(terms) do
+    if t.buf == buf then
       idx = i
       break
     end
   end
-  if idx == nil then
-    idx = delta > 0 and 1 or #entries
-  else
-    idx = ((idx - 1 + delta) % #entries) + 1
+  if not idx then
+    return
   end
-  M.show(entries[idx].id)
-end
-
---- 真正结束进程（wipe buffer → SIGHUP）
-function M.kill(count)
-  for _, t in ipairs(term_list()) do
-    local info = vim.b[t.buf].snacks_terminal or {}
-    if (info.id or 1) == count and t.buf and vim.api.nvim_buf_is_valid(t.buf) then
-      vim.api.nvim_buf_delete(t.buf, { force = true })
-      return true
+  local t = table.remove(terms, idx)
+  esc_timers[buf] = nil
+  local p = panel[t.kind]
+  if p.cur == t.id then
+    local list = M.terms(t.kind)
+    p.cur = list[1] and list[1].id or nil
+    if in_current_tab(p.win) then
+      if p.cur then
+        vim.api.nvim_win_set_buf(p.win, get(p.cur).buf)
+        vim.wo[p.win].winbar = " " .. t.name
+      end
     end
   end
-  return false
+  if p.cur == nil then
+    M.hide(t.kind, true)
+  else
+    M.refresh(t.kind)
+  end
+  if delete_buf and vim.api.nvim_buf_is_valid(buf) then
+    pcall(vim.api.nvim_buf_delete, buf, { force = true })
+  end
 end
 
-local function label(e)
-  local name = e.cmd
-  if type(name) == "table" then
-    name = table.concat(name, " ")
+--- 真正结束进程并移除
+function M.kill(id)
+  local t = get(id)
+  if not t then
+    return false
   end
-  name = name or vim.fn.fnamemodify(vim.o.shell, ":t")
-  local cwd = vim.fn.fnamemodify(e.cwd ~= "" and e.cwd or vim.fn.getcwd(), ":~")
-  -- nvim 的 term_title 形如 term://cwd//pid:/bin/bash → 去掉前缀噪声
-  local title = e.title:gsub("^term://.-//%d+:", "")
-  -- 标题与命令名重复时不再显示（如 shell 的 /bin/bash vs bash）
-  if title == "" or name:find(title, 1, true) or title:find(name, 1, true) then
-    title = ""
+  if t.job and t.job > 0 then
+    pcall(vim.fn.jobstop, t.job)
   end
-  return ("%d: %s  %s%s"):format(e.id, name, cwd, title ~= "" and ("  " .. title) or "")
+  M.remove(t.buf, true)
+  return true
+end
+
+-- ── 侧边栏 ───────────────────────────────────────────
+
+function M.refresh(kind)
+  local buf = side_buffers[kind]
+  if not (buf and vim.api.nvim_buf_is_valid(buf)) then
+    return
+  end
+  local names = display_names(kind)
+  local p = panel[kind]
+  local lines, hl = {}, nil
+  for i, t in ipairs(M.terms(kind)) do
+    lines[i] = ("%s%s"):format(t.id == p.cur and "▸ " or "  ", names[t.id] or t.name)
+    if t.id == p.cur then
+      hl = i
+    end
+  end
+  if #lines == 0 then
+    lines = { "  (无终端)" }
+  end
+  vim.bo[buf].modifiable = true
+  vim.api.nvim_buf_set_lines(buf, 0, -1, false, lines)
+  vim.bo[buf].modifiable = false
+  vim.api.nvim_buf_clear_namespace(buf, NS, 0, -1)
+  if hl then
+    vim.api.nvim_buf_add_highlight(buf, NS, "Visual", hl - 1, 0, -1)
+  end
+end
+
+local function ensure_side_buf(kind)
+  local buf = side_buffers[kind]
+  if buf and vim.api.nvim_buf_is_valid(buf) then
+    return buf
+  end
+  buf = vim.api.nvim_create_buf(false, true)
+  vim.bo[buf].modifiable = false
+  vim.bo[buf].buftype = "nofile"
+  local function pick_at(line)
+    local t = M.terms(kind)[line]
+    if t then
+      M.select(kind, t.id)
+    end
+  end
+  vim.keymap.set("n", "<CR>", function()
+    pick_at(vim.api.nvim_win_get_cursor(0)[1])
+  end, { buffer = buf, desc = "切换到该终端" })
+  vim.keymap.set("n", "<LeftMouse>", function()
+    local pos = vim.fn.getmousepos()
+    if pos.winid and vim.api.nvim_win_get_buf(pos.winid) == buf and pos.line > 0 then
+      pick_at(pos.line)
+    end
+  end, { buffer = buf, desc = "鼠标点击切换终端" })
+  vim.keymap.set("n", "q", function()
+    M.hide(kind)
+  end, { buffer = buf, desc = "收起终端面板" })
+  side_buffers[kind] = buf
+  return buf
+end
+
+local function setup_side_win(win)
+  vim.wo[win].number = false
+  vim.wo[win].relativenumber = false
+  vim.wo[win].signcolumn = "no"
+  vim.wo[win].foldcolumn = "0"
+  vim.wo[win].wrap = false
+  vim.wo[win].cursorline = false
+  vim.wo[win].winfixwidth = true
+  vim.wo[win].list = false
+  vim.wo[win].spell = false
+end
+
+-- ── 面板窗口 ─────────────────────────────────────────
+
+local function watch(win, kind)
+  vim.api.nvim_create_autocmd("WinClosed", {
+    pattern = tostring(win),
+    once = true,
+    callback = function()
+      vim.schedule(function()
+        local p = panel[kind]
+        if p.closing then
+          return
+        end
+        if p.win == win or p.side == win then
+          if is_win(p.win) then
+            pcall(vim.api.nvim_win_close, p.win, true)
+          end
+          if is_win(p.side) then
+            pcall(vim.api.nvim_win_close, p.side, true)
+          end
+          p.win, p.side, p.visible = nil, nil, false
+        end
+      end)
+    end,
+  })
+end
+
+local function fade(wins, steps, done)
+  local i = 1
+  local function step()
+    if i > #steps then
+      if done then
+        done()
+      end
+      return
+    end
+    for _, w in ipairs(wins) do
+      if is_win(w) then
+        pcall(function()
+          vim.wo[w].winblend = steps[i]
+        end)
+      end
+    end
+    i = i + 1
+    vim.defer_fn(step, 18)
+  end
+  step()
+end
+
+--- 收起面板；soft=true 时不播放动画（终端被清空）
+function M.hide(kind, soft)
+  local p = panel[kind]
+  if not p.visible and not is_win(p.win) and not is_win(p.side) then
+    return
+  end
+  p.closing = true
+  local wins = { p.side, p.win }
+  local function close_all()
+    for _, w in ipairs(wins) do
+      if is_win(w) then
+        pcall(vim.api.nvim_win_close, w, true)
+      end
+    end
+    p.win, p.side, p.visible, p.closing = nil, nil, false, false
+  end
+  if kind == "float" and not soft and in_current_tab(p.win) then
+    fade(wins, { 20, 45, 70 }, close_all)
+  else
+    close_all()
+  end
+end
+
+local function show_float()
+  local p = panel.float
+  if M.count("float") == 0 then
+    M.create("float")
+  end
+  if in_current_tab(p.win) then
+    vim.api.nvim_set_current_win(p.win)
+    vim.cmd("startinsert")
+    return
+  end
+  if is_win(p.win) then
+    pcall(vim.api.nvim_win_close, p.win, true)
+  end
+  if is_win(p.side) then
+    pcall(vim.api.nvim_win_close, p.side, true)
+  end
+
+  local cur = get(p.cur) or M.terms("float")[1]
+  p.cur = cur.id
+  local g = float_geom()
+  p.side = vim.api.nvim_open_win(ensure_side_buf("float"), false, {
+    relative = "editor",
+    style = "minimal",
+    width = g.sw,
+    height = g.h,
+    row = g.row,
+    col = g.col,
+    border = "none",
+    zindex = 45,
+  })
+  p.win = vim.api.nvim_open_win(cur.buf, true, {
+    relative = "editor",
+    style = "minimal",
+    width = g.w,
+    height = g.h,
+    row = g.row,
+    col = g.col + g.sw,
+    border = "rounded",
+    title = " " .. cur.name .. " ",
+    title_pos = "center",
+    zindex = 50,
+  })
+  vim.wo[p.win].winbar = ""
+  p.visible = true
+  watch(p.win, "float")
+  watch(p.side, "float")
+  M.refresh("float")
+  fade({ p.win, p.side }, FADE)
+  vim.cmd("startinsert")
+end
+
+local function show_bottom()
+  local p = panel.bottom
+  if M.count("bottom") == 0 then
+    M.create("bottom")
+  end
+  if in_current_tab(p.win) then
+    vim.api.nvim_set_current_win(p.win)
+    vim.cmd("startinsert")
+    return
+  end
+  if is_win(p.win) then
+    pcall(vim.api.nvim_win_close, p.win, true)
+  end
+  if is_win(p.side) then
+    pcall(vim.api.nvim_win_close, p.side, true)
+  end
+
+  local cur = get(p.cur) or M.terms("bottom")[1]
+  p.cur = cur.id
+  vim.cmd("botright split")
+  p.win = vim.api.nvim_get_current_win()
+  vim.api.nvim_win_set_height(p.win, math.max(5, math.floor(vim.o.lines * BOTTOM_RATIO)))
+  vim.cmd("leftabove vsplit")
+  p.side = vim.api.nvim_get_current_win()
+  vim.api.nvim_win_set_width(p.side, side_width())
+  setup_side_win(p.side)
+  vim.api.nvim_win_set_buf(p.side, ensure_side_buf("bottom"))
+  vim.api.nvim_win_set_buf(p.win, cur.buf)
+  vim.wo[p.win].winbar = " " .. cur.name
+  p.visible = true
+  watch(p.win, "bottom")
+  watch(p.side, "bottom")
+  M.refresh("bottom")
+  vim.api.nvim_set_current_win(p.win)
+  vim.cmd("startinsert")
+end
+
+--- 呼出/收起面板；没有终端时自动创建
+function M.summon(kind)
+  if in_current_tab(panel[kind].win) then
+    M.hide(kind)
+  elseif kind == "float" then
+    show_float()
+  else
+    show_bottom()
+  end
+end
+
+--- 在面板中切换到某终端（自动确保面板可见）
+function M.select(kind, id)
+  local t = get(id)
+  if not t or t.kind ~= kind then
+    return
+  end
+  panel[kind].cur = id
+  if not in_current_tab(panel[kind].win) then
+    if kind == "float" then
+      show_float()
+    else
+      show_bottom()
+    end
+    return
+  end
+  local p = panel[kind]
+  vim.api.nvim_win_set_buf(p.win, t.buf)
+  vim.wo[p.win].winbar = " " .. t.name
+  if kind == "float" and is_win(p.win) then
+    pcall(vim.api.nvim_win_set_config, p.win, { title = " " .. t.name .. " ", title_pos = "center" })
+  end
+  M.refresh(kind)
+  vim.api.nvim_set_current_win(p.win)
+  vim.cmd("startinsert")
+end
+
+--- 当前面板内循环（<M-j> 上一个 / <M-k> 下一个）
+function M.cycle(delta)
+  local kind = M.current_kind()
+  if not kind then
+    return
+  end
+  local list = M.terms(kind)
+  if #list == 0 then
+    return
+  end
+  local p = panel[kind]
+  local idx = 1
+  for i, t in ipairs(list) do
+    if t.id == p.cur then
+      idx = i
+    end
+  end
+  idx = ((idx - 1 + delta) % #list) + 1
+  M.select(kind, list[idx].id)
+end
+
+--- <M-n>：新建一台与当前终端同类型的终端
+function M.new_like_current()
+  local kind = M.current_kind() or "float"
+  local t = M.create(kind)
+  if t then
+    M.select(kind, t.id)
+  end
+end
+
+-- ── 终端列表（<leader>tl）────────────────────────────
+
+local function snacks_items()
+  local out = {}
+  for _, st in ipairs(require("snacks.terminal").list()) do
+    local info = vim.b[st.buf].snacks_terminal or {}
+    local cmd = info.cmd
+    if type(cmd) == "table" then
+      cmd = table.concat(cmd, " ")
+    end
+    local name = "shell"
+    if cmd then
+      name = vim.fn.fnamemodify(vim.split(cmd, " ")[1], ":t")
+    end
+    out[#out + 1] = { text = ("[面板] %s"):format(name), snacks = st.buf }
+  end
+  return out
 end
 
 function M.items()
   local out = {}
-  for _, e in ipairs(M.entries()) do
-    out[#out + 1] = { text = label(e), id = e.id }
+  for _, spec in ipairs({ { "float", "浮" }, { "bottom", "底" } }) do
+    local kind, tag = spec[1], spec[2]
+    local names = display_names(kind)
+    for _, t in ipairs(M.terms(kind)) do
+      out[#out + 1] = { text = ("[%s] %s"):format(tag, names[t.id] or t.name), id = t.id, kind = kind }
+    end
   end
+  vim.list_extend(out, snacks_items())
   return out
 end
 
 function M.picker()
   require("snacks.picker").pick({
     title = "终端",
-    format = "text", -- 默认 file formatter 只认 item.file，会让只有 text 的条目显示成空白
+    format = "text",
     items = M.items(),
     confirm = function(_, item)
-      M.focus(item.id)
+      if item.kind then
+        M.select(item.kind, item.id)
+      elseif item.snacks then
+        for _, st in ipairs(require("snacks.terminal").list()) do
+          if st.buf == item.snacks then
+            st:show():focus()
+            return
+          end
+        end
+      end
     end,
     actions = {
       term_kill = function(picker, item)
-        if item and M.kill(item.id) then
+        local ok = false
+        if item.kind then
+          ok = M.kill(item.id)
+        elseif item.snacks and vim.api.nvim_buf_is_valid(item.snacks) then
+          vim.api.nvim_buf_delete(item.snacks, { force = true })
+          ok = true
+        end
+        if ok then
           picker:close()
         end
-      end,
-      term_new = function(picker)
-        picker:close()
-        M.open_float(M.next_count())
       end,
     },
     win = {
       list = {
         keys = {
           ["<C-d>"] = "term_kill",
-          ["<C-n>"] = "term_new",
         },
       },
     },
+  })
+end
+
+-- ── 装配 ─────────────────────────────────────────────
+
+function M.setup()
+  vim.api.nvim_create_autocmd("VimResized", {
+    group = vim.api.nvim_create_augroup("nvkit_term", { clear = true }),
+    callback = function()
+      local p = panel.float
+      if not in_current_tab(p.win) then
+        return
+      end
+      local g = float_geom()
+      if is_win(p.side) then
+        pcall(vim.api.nvim_win_set_config, p.side, {
+          relative = "editor",
+          style = "minimal",
+          width = g.sw,
+          height = g.h,
+          row = g.row,
+          col = g.col,
+          border = "none",
+        })
+      end
+      if is_win(p.win) then
+        pcall(vim.api.nvim_win_set_config, p.win, {
+          relative = "editor",
+          style = "minimal",
+          width = g.w,
+          height = g.h,
+          row = g.row,
+          col = g.col + g.sw,
+          border = "rounded",
+        })
+      end
+    end,
   })
 end
 

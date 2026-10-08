@@ -114,16 +114,13 @@ vim.api.nvim_create_user_command("NvkitHome", home, { desc = "打开启动页（
 map("n", "<leader>gg", function() require("snacks").lazygit() end, { desc = "Lazygit" })
 map("n", "<leader>gB", function() require("snacks").gitbrowse() end, { desc = "浏览器打开" })
 
--- ── 终端（统一 <leader>t*；数字前缀多开，如 2tt）─────
-map("n", "<leader>tt", function() require("nvim-devkit.term").open_float() end, { desc = "浮动终端开关（2tt = 第 2 台）" })
-map("n", "<leader>tn", function()
-  local term = require("nvim-devkit.term")
-  term.open_float(term.next_count())
-end, { desc = "新建浮动终端" })
-map("n", "<leader>tb", function() require("nvim-devkit.term").open_bottom() end, { desc = "底部终端开关" })
-map("n", "<leader>tl", function() require("nvim-devkit.term").picker() end, { desc = "终端列表（切换/杀/新建）" })
-map("t", "<M-j>", function() require("nvim-devkit.term").cycle(-1) end, { desc = "上一个终端（循环）" })
-map("t", "<M-k>", function() require("nvim-devkit.term").cycle(1) end, { desc = "下一个终端（循环）" })
+-- ── 终端（面板：tp 浮动 / tb 底部 / tl 列表）──────────
+map("n", "<leader>tp", function() require("nvim-devkit.term").summon("float") end, { desc = "呼出/收起浮动终端" })
+map("n", "<leader>tb", function() require("nvim-devkit.term").summon("bottom") end, { desc = "呼出/收起底部终端" })
+map("n", "<leader>tl", function() require("nvim-devkit.term").picker() end, { desc = "终端列表（切换/杀）" })
+map("t", "<M-j>", function() require("nvim-devkit.term").cycle(-1) end, { desc = "上一个终端（同类）" })
+map("t", "<M-k>", function() require("nvim-devkit.term").cycle(1) end, { desc = "下一个终端（同类）" })
+map("t", "<M-n>", function() require("nvim-devkit.term").new_like_current() end, { desc = "新建同类终端" })
 
 -- ── 搜索跳转后保持上下文 ──────────────────────────────
 map("n", "n", "nzzzv", { desc = "下一个匹配（居中）" })
