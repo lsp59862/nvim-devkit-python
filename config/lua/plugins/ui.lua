@@ -139,7 +139,10 @@ return {
       scope = { enabled = true },
       scroll = { enabled = true },
       statuscolumn = { enabled = true },
-      terminal = { enabled = true },
+      terminal = {
+        enabled = true,
+        win = { position = "float", width = 0.8, height = 0.8, border = "rounded" },
+      },
       words = { enabled = true },
       git = { enabled = true },
       gitbrowse = { enabled = true },

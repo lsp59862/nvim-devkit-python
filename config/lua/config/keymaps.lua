@@ -20,6 +20,20 @@ map("n", "<leader>uR", "<cmd>edit!<CR>", { desc = "强制重载（丢弃未保�
 map({ "n", "i", "v" }, "<C-s>", "<cmd>w<CR><Esc>", { desc = "保存" })
 map("n", "<leader>fs", "<cmd>w<CR>", { desc = "保存" })
 
+-- ── 词级删除（VS Code 式 Ctrl+Backspace / Ctrl+Delete）──
+map({ "i", "c" }, "<C-BS>", "<C-w>", { desc = "删除前一个词" })
+map("i", "<C-H>", "<C-w>", { desc = "删除前一个词（终端把 Ctrl+Backspace 发成 ^H）" })
+map("i", "<C-Del>", function()
+  local line = vim.api.nvim_get_current_line()
+  local col = vim.api.nvim_win_get_cursor(0)[2]
+  local rest = line:sub(col + 1)
+  local s, e = rest:find("^%s*%S+")
+  if s then
+    vim.api.nvim_set_current_line(line:sub(1, col) .. rest:sub(e + 1))
+    vim.api.nvim_win_set_cursor(0, { vim.fn.line("."), col })
+  end
+end, { desc = "删除后一个词" })
+
 -- ── 行首 / 行末（Alt+1 / Alt+0，任何模式都不切换）──────
 map({ "n", "x" }, "<M-1>", "^", { desc = "移到行首（首个非空白）" })
 map({ "n", "x" }, "<M-0>", "$", { desc = "移到行末" })
@@ -100,9 +114,14 @@ vim.api.nvim_create_user_command("NvkitHome", home, { desc = "打开启动页（
 map("n", "<leader>gg", function() require("snacks").lazygit() end, { desc = "Lazygit" })
 map("n", "<leader>gB", function() require("snacks").gitbrowse() end, { desc = "浏览器打开" })
 
--- ── 终端 ─────────────────────────────────────────────
-map({ "n", "t" }, "<C-/>", function() require("snacks").terminal() end, { desc = "浮动终端" })
-map({ "n", "t" }, "<C-_>", function() require("snacks").terminal() end, { desc = "浮动终端（Ctrl+/ 别名）" })
+-- ── 终端（统一 <leader>t*；数字前缀多开，如 2tt）─────
+map("n", "<leader>tt", function() require("nvim-devkit.term").open_float() end, { desc = "浮动终端开关（2tt = 第 2 台）" })
+map("n", "<leader>tn", function()
+  local term = require("nvim-devkit.term")
+  term.open_float(term.next_count())
+end, { desc = "新建浮动终端" })
+map("n", "<leader>tb", function() require("nvim-devkit.term").open_bottom() end, { desc = "底部终端开关" })
+map("n", "<leader>tl", function() require("nvim-devkit.term").picker() end, { desc = "终端列表（切换/杀/新建）" })
 
 -- ── 搜索跳转后保持上下文 ──────────────────────────────
 map("n", "n", "nzzzv", { desc = "下一个匹配（居中）" })

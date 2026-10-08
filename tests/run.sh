@@ -80,6 +80,7 @@ run_case() {
 # 顺序有依赖：session_save 必须在 session_load 之前；退出类放最后
 run_case winbuf_file 0
 run_case keymaps_alt 0
+run_case keymaps_ctrl_bs 0
 run_case winbuf_typed_q 0
 run_case winbuf_typed_qbang 0
 run_case winbuf_typed_wq 0
@@ -98,6 +99,8 @@ run_case scope_session_save 0
 run_case scope_session_load 0
 run_case session_toggle 0
 run_case session_restore 0
+run_case terminal_multi 0
+run_case terminal_list 0
 run_case opencode_keys 0
 run_case dashboard_keys 0
 run_case tutor 0
