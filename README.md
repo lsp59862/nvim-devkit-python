@@ -178,6 +178,7 @@ Neovim 原生的"关文件 / 关窗口"语义很容易踩坑（同一个键在�
 - **自动保存**：只在退出 nvim 时存一次；当时还有 ≥1 个有名文件才存（只剩 dashboard 不会覆盖旧快照）
 - **按目录隔离**：每个 cwd 一个快照（非 main/master 分支再按分支区分），存在 `~/.local/state/nvim-devkit/sessions/`
 - **恢复**：`<leader>qs` 本目录 · `<leader>ql` 最近一次 · 启动页普通键 `r`；没有快照时静默返回
+- **自动恢复（可选，默认关）**：`NVIM_DEVKIT_AUTORESTORE=1 nvim-devkit`（或 `vim.g.nvkit_autorestore = true`）后，交互式启动且无文件参数时，本目录有快照就直接进现场；启动页检测到快照也会提示按 `r`
 - **开关**：`<leader>qd` 停止本次运行的自动保存，`<leader>qe` 重新开启（可逆）；启动页 `q` 与 `:q` 语义一致
 
 每个 tab 只有两个状态，`:q` 的闭环如下：
@@ -216,7 +217,7 @@ Vim 的"模式 + 前缀键 + 寄存器"让误按后果难以预期。本配置�
 3. **可预测的取消语义**：`Esc` 取消一切待定操作并清高亮；插件浮窗一律 `Esc` 关闭。
 4. **状态可见**：which-key 200ms 显示所有可能路径；状态栏显示模式与宏录制状态；noice 显示命令回显。
 5. **防误触**：`Q`（Ex 模式）禁用；关闭自动执行项目内配置（`exrc=false`）。
-6. **现场恢复**：退出时自动存现场，`<leader>qs` / `<leader>ql` 恢复（buffer / 窗口 / 布局 / 各 tab 归属）；`<leader>qd` / `<leader>qe` 可停 / 开自动保存。
+6. **现场恢复**：退出时自动存现场，`<leader>qs` / `<leader>ql` 恢复（buffer / 窗口 / 布局 / 各 tab 归属）；`<leader>qd` / `<leader>qe` 可停 / 开自动保存；有快照时启动页会提示，`NVIM_DEVKIT_AUTORESTORE=1` 可开启"启动即回现场"。
 
 完整对照表见 [docs/LEARNING.md](docs/LEARNING.md) 的「误按恢复手册」。
 
@@ -275,7 +276,7 @@ Vim 的"模式 + 前缀键 + 寄存器"让误按后果难以预期。本配置�
 ## 行为测试
 
 ```bash
-./tests/run.sh           # 行为测试：23 个用例 / 55 项断言，必须全部通过
+./tests/run.sh           # 行为测试：26 个用例 / 80 项断言，必须全部通过
 scripts/checkhealth.sh   # 健康检查：硬错误必须为 0
 ```
 

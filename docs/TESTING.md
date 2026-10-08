@@ -26,7 +26,7 @@ cd ~/nvim-devkit
 - nvim 可执行文件查找顺序：`NVIM_DEVKIT_BIN` 环境变量 → `~/.local/share/nvim-devkit/nvim/bin/nvim` → PATH 中的 `nvim`
 - 失败时完整日志留在 `/tmp/nvim-devkit-tests/log-<用例>.txt`
 
-## 覆盖范围（23 个用例 / 55 项断言）
+## 覆盖范围（26 个用例 / 80 项断言）
 
 | 用例 | 覆盖行为 |
 | --- | --- |
@@ -45,6 +45,9 @@ cd ~/nvim-devkit
 | `scope_tabclose` | "关过 tab 再新增"后序列化不错位 |
 | `scope_session_save` / `scope_session_load` | 各 tab 文件归属随会话保存/恢复（含关过 tab 的场景） |
 | `session_toggle` | 会话自动保存开关闭环：前置开启 · `qd` 停止后退出不写会话文件 · `qe` 重新开启后恢复写入且含当前文件 |
+| `session_restore` | 自动恢复（opt-in）门闸：默认关 · headless 永不恢复 · 开关/参数/UI/快照四条件真值表 · `session_file` 有无快照两态 |
+| `completion_keys` | 补全键位契约：Enter=接受 · Tab/S-Tab=下/上一项 · Esc=取消预览 · C-y 仍可接受 · normal Tab 不受影响 |
+| `tutor` | 官方教程未被禁用：`:Tutor` 存在且能打开（按 v:lang 自动选中文版） |
 | `opencode_keys` | opencode 插件 1.x 公开 API 存在性（`ask/select/prompt/operator`，无 `toggle`）· `<leader>ot` 映射存在（n/t）· stub 验证调用 `snacks.terminal.toggle("opencode --port", 右侧面板)` |
 | `dashboard_keys` | 启动页按键契约：`r` = 恢复会话（persistence.load）· `q` = `:q`（防回退到 snacks 默认的 `<cmd>bd`）· buffer 内映射存在 |
 | `winbuf_exit_dashboard` | 退出类：dashboard 上 `:q` → 退出 nvim |
@@ -62,7 +65,10 @@ cd ~/nvim-devkit
 | `:exit` | 无条件退出 nvim |
 | tab 工作区（scope） | 每个 tab 独立文件列表；同一文件跨 tab 仍是同一个 buffer |
 | 会话（persistence + scope_bridge） | 各 tab 的文件归属随会话保存/恢复；自动保存在退出且 ≥1 有名文件时触发；`qd` / `qe` 成对开关 |
+| 会话自动恢复（opt-in） | 默认关；仅"开开关 + 无参数 + 有 UI + 有快照"时恢复；headless 永不动作；启动页有快照时显示提示行 |
 | 启动页按键 | 普通键 `r` 恢复会话；`q` 与 `:q` 一致（单 tab 退出 / 多 tab 关当前 tab） |
+| 补全键位（blink.cmp） | 插入模式 Enter 接受 / Tab、S-Tab 浏览 / Esc、C-e 取消预览；normal 的 Tab 仍为 bnext |
+| 官方教程 | `:Tutor` 可用（runtime 的 tutor 插件未被 lazy 禁用） |
 
 ## 新增用例
 
