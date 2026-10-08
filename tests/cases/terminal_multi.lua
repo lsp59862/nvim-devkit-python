@@ -54,6 +54,24 @@ term.kill(b[1].id)
 vim.wait(300)
 lib.ok("kill 后面板切到剩下那台", term.count("bottom") == 1 and term.cur("bottom") == b[2].id,
   ("n=%d cur=%s"):format(term.count("bottom"), tostring(term.cur("bottom"))))
+lib.ok("删除不重排编号（bash 2 不变成 bash 1）", (function()
+  local lines = side_lines("bottom")
+  return #lines == 1 and lines[1]:find("bash 2", 1, true) ~= nil
+end)(), vim.inspect(side_lines("bottom")))
+
+-- <M-r> 重命名：侧边栏与列表同步
+local orig_input = vim.ui.input
+vim.ui.input = function(_, cb)
+  cb("训练")
+end
+term.rename_current()
+vim.wait(100)
+vim.ui.input = orig_input
+lib.ok("Alt+R 重命名生效", (function()
+  local lines = side_lines("bottom")
+  return term.name_of(b[2].id) == "训练" and lines[1]:find("训练", 1, true) ~= nil
+end)(), vim.inspect(side_lines("bottom")))
+
 term.kill(b[2].id)
 vim.wait(300)
 lib.ok("最后 kill 后面板收起", term.count("bottom") == 0 and not term.visible("bottom"),

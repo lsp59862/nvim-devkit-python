@@ -2,9 +2,11 @@
 --
 --  · <leader>tp / <leader>tb：呼出/收起对应面板；没有终端时自动创建一台
 --  · <leader>tl：终端列表（[浮]/[底]/[面板]，可切换、<C-d> 杀进程）
---  · 终端模式 <M-j>/<M-k>：只在当前面板内循环；<M-n>：新建一台同类终端
---  · 侧边栏显示 shell 简名（重名自动编号）并高亮当前；鼠标点击 / <CR> 切换，q 收起
---  · 浮动面板有淡入淡出动画（winblend）；opencode 面板不归此模块管（<leader>ot）
+--  · 终端模式 <M-j>/<M-k>：按列表顺序向下/向上循环（只在本面板内）；
+--    <M-n>：新建同类终端；<M-r>：重命名当前终端
+--  · 侧边栏显示名字（shell 简名 + 创建序号，重命名后显示自定义名）并高亮当前；
+--    鼠标点击 / <CR> 切换，q 收起
+--  · 浮动面板从屏幕底部滑入、向底部滑出；opencode 面板不归此模块管（<leader>ot）
 local M = {}
 
 local uv = vim.uv or vim.loop
@@ -12,25 +14,32 @@ local uv = vim.uv or vim.loop
 local FLOAT_RATIO = { w = 0.8, h = 0.8 }
 local BOTTOM_RATIO = 0.3
 local SIDE_MIN, SIDE_MAX = 12, 20
-local FADE = { 70, 45, 25, 10, 0 }
+local SLIDE_STEPS, SLIDE_MS = 10, 14
 local NS = vim.api.nvim_create_namespace("nvkit_term_side")
 
 ---@class DevkitTerm
 ---@field id integer
+---@field idx integer       -- 同类内创建序号（稳定，不因删除而重排）
 ---@field kind "float"|"bottom"
 ---@field buf integer
 ---@field job integer
----@field name string
+---@field name string        -- 程序简名（如 bash）
+---@field label? string      -- 用户重命名后的名字
 
 local terms = {} ---@type DevkitTerm[]
 local id_seq = 1
+local kind_seq = { float = 0, bottom = 0 }
 local esc_timers = {}
+local slide_token = { float = 0 }
 
 local panel = {
   float = { visible = false, win = nil, side = nil, cur = nil, closing = false },
   bottom = { visible = false, win = nil, side = nil, cur = nil, closing = false },
 }
 local side_buffers = { float = nil, bottom = nil }
+
+-- 浮动窗口几何工具（定义在后，前端引用）
+local read_geom, set_float_wins
 
 local function is_win(w)
   return w ~= nil and vim.api.nvim_win_is_valid(w)
@@ -56,6 +65,10 @@ local function term_of_buf(buf)
   end
 end
 
+local function name_of(t)
+  return t.label or (t.name .. " " .. t.idx)
+end
+
 local function side_width()
   return math.min(SIDE_MAX, math.max(SIDE_MIN, math.floor(vim.o.columns * 0.16)))
 end
@@ -67,26 +80,8 @@ local function float_geom()
   local sw = side_width()
   local col = math.max(0, math.floor((cols - (w + sw)) / 2))
   local row = math.max(0, math.floor((lines - h) / 2) - 1)
-  return { row = row, col = col, h = h, w = w, sw = sw }
-end
-
---- 同类重名时追加序号（bash / bash 2）
-local function display_names(kind)
-  local group = {}
-  for _, t in ipairs(terms) do
-    if t.kind == kind then
-      group[#group + 1] = t
-    end
-  end
-  local total, seen, out = {}, {}, {}
-  for _, t in ipairs(group) do
-    total[t.name] = (total[t.name] or 0) + 1
-  end
-  for _, t in ipairs(group) do
-    seen[t.name] = (seen[t.name] or 0) + 1
-    out[t.id] = total[t.name] > 1 and (t.name .. " " .. seen[t.name]) or t.name
-  end
-  return out
+  -- 侧边栏无边框，高度补 2 行与主窗（带边框）齐平
+  return { row = row, col = col, h = h, w = w, sw = sw, side_h = h + 2 }
 end
 
 -- ── 查询接口（测试与列表共用）──────────────────────────
@@ -109,8 +104,7 @@ function M.count(kind)
 end
 
 function M.visible(kind)
-  local p = panel[kind]
-  return in_current_tab(p.win)
+  return in_current_tab(panel[kind].win)
 end
 
 function M.cur(kind)
@@ -127,6 +121,11 @@ end
 
 function M.side_buf(kind)
   return side_buffers[kind]
+end
+
+function M.name_of(id)
+  local t = get(id)
+  return t and name_of(t) or nil
 end
 
 function M.current_kind()
@@ -184,7 +183,15 @@ function M.create(kind)
     return nil
   end
   vim.bo[buf].bufhidden = "hide"
-  local t = { id = id_seq, kind = kind, buf = buf, job = job, name = vim.fn.fnamemodify(vim.o.shell, ":t") }
+  kind_seq[kind] = kind_seq[kind] + 1
+  local t = {
+    id = id_seq,
+    idx = kind_seq[kind],
+    kind = kind,
+    buf = buf,
+    job = job,
+    name = vim.fn.fnamemodify(vim.o.shell, ":t"),
+  }
   id_seq = id_seq + 1
   terms[#terms + 1] = t
   setup_term_buffer(t)
@@ -214,8 +221,9 @@ function M.remove(buf, delete_buf)
     p.cur = list[1] and list[1].id or nil
     if in_current_tab(p.win) then
       if p.cur then
-        vim.api.nvim_win_set_buf(p.win, get(p.cur).buf)
-        vim.wo[p.win].winbar = " " .. t.name
+        local ct = get(p.cur)
+        vim.api.nvim_win_set_buf(p.win, ct.buf)
+        vim.wo[p.win].winbar = " " .. name_of(ct)
       end
     end
   end
@@ -242,6 +250,35 @@ function M.kill(id)
   return true
 end
 
+--- <M-r>：重命名当前终端
+function M.rename_current()
+  local t = term_of_buf(vim.api.nvim_get_current_buf())
+  if not t then
+    return
+  end
+  vim.ui.input({ prompt = "终端名称: ", default = name_of(t) }, function(input)
+    if input == nil then
+      return
+    end
+    input = vim.trim(input)
+    t.label = input ~= "" and input or nil
+    M.refresh(t.kind)
+    local p = panel[t.kind]
+    if in_current_tab(p.win) and p.cur == t.id then
+      vim.wo[p.win].winbar = " " .. name_of(t)
+      if t.kind == "float" then
+        local g = read_geom()
+        set_float_wins(g, g.row, name_of(t))
+      end
+    end
+    vim.schedule(function()
+      if in_current_tab(p.win) and vim.api.nvim_get_current_win() == p.win then
+        vim.cmd("startinsert")
+      end
+    end)
+  end)
+end
+
 -- ── 侧边栏 ───────────────────────────────────────────
 
 function M.refresh(kind)
@@ -249,11 +286,10 @@ function M.refresh(kind)
   if not (buf and vim.api.nvim_buf_is_valid(buf)) then
     return
   end
-  local names = display_names(kind)
   local p = panel[kind]
   local lines, hl = {}, nil
   for i, t in ipairs(M.terms(kind)) do
-    lines[i] = ("%s%s"):format(t.id == p.cur and "▸ " or "  ", names[t.id] or t.name)
+    lines[i] = ("%s%s"):format(t.id == p.cur and "▸ " or "  ", name_of(t))
     if t.id == p.cur then
       hl = i
     end
@@ -338,26 +374,65 @@ local function watch(win, kind)
   })
 end
 
-local function fade(wins, steps, done)
-  local i = 1
-  local function step()
-    if i > #steps then
-      if done then
-        done()
-      end
+--- 读取当前浮窗几何（不变量：两个浮窗仍在）；供平移/标题更新全量重配
+read_geom = function()
+  local p = panel.float
+  if not (is_win(p.win) and is_win(p.side)) then
+    return float_geom()
+  end
+  local wc = vim.api.nvim_win_get_config(p.win)
+  local sc = vim.api.nvim_win_get_config(p.side)
+  return { row = wc.row, col = sc.col, h = wc.height, w = wc.width, sw = sc.width, side_h = sc.height }
+end
+
+set_float_wins = function(g, row, title)
+  local p = panel.float
+  if is_win(p.side) then
+    pcall(vim.api.nvim_win_set_config, p.side, {
+      relative = "editor",
+      style = "minimal",
+      width = g.sw,
+      height = g.side_h,
+      row = row,
+      col = g.col,
+      border = "none",
+    })
+  end
+  if is_win(p.win) then
+    pcall(vim.api.nvim_win_set_config, p.win, {
+      relative = "editor",
+      style = "minimal",
+      width = g.w,
+      height = g.h,
+      row = row,
+      col = g.col + g.sw,
+      border = "rounded",
+      title = title and (" " .. title .. " ") or nil,
+      title_pos = "center",
+    })
+  end
+end
+
+--- 浮动面板平移（滑入/滑出）；ease-out 让进入更柔和
+local function slide(g, title, row_from, row_to, done)
+  slide_token.float = slide_token.float + 1
+  local token = slide_token.float
+  local function step(i)
+    if token ~= slide_token.float then
       return
     end
-    for _, w in ipairs(wins) do
-      if is_win(w) then
-        pcall(function()
-          vim.wo[w].winblend = steps[i]
-        end)
-      end
+    local t = i / SLIDE_STEPS
+    local eased = 1 - (1 - t) * (1 - t)
+    set_float_wins(g, math.floor(row_from + (row_to - row_from) * eased + 0.5), title)
+    if i < SLIDE_STEPS then
+      vim.defer_fn(function()
+        step(i + 1)
+      end, SLIDE_MS)
+    elseif done then
+      done()
     end
-    i = i + 1
-    vim.defer_fn(step, 18)
   end
-  step()
+  step(1)
 end
 
 --- 收起面板；soft=true 时不播放动画（终端被清空）
@@ -367,9 +442,8 @@ function M.hide(kind, soft)
     return
   end
   p.closing = true
-  local wins = { p.side, p.win }
   local function close_all()
-    for _, w in ipairs(wins) do
+    for _, w in ipairs({ p.side, p.win }) do
       if is_win(w) then
         pcall(vim.api.nvim_win_close, w, true)
       end
@@ -377,7 +451,8 @@ function M.hide(kind, soft)
     p.win, p.side, p.visible, p.closing = nil, nil, false, false
   end
   if kind == "float" and not soft and in_current_tab(p.win) then
-    fade(wins, { 20, 45, 70 }, close_all)
+    local g = read_geom()
+    slide(g, M.name_of(p.cur), g.row, vim.o.lines, close_all)
   else
     close_all()
   end
@@ -403,12 +478,13 @@ local function show_float()
   local cur = get(p.cur) or M.terms("float")[1]
   p.cur = cur.id
   local g = float_geom()
+  local start_row = vim.o.lines -- 从屏幕底部滑入
   p.side = vim.api.nvim_open_win(ensure_side_buf("float"), false, {
     relative = "editor",
     style = "minimal",
     width = g.sw,
-    height = g.h,
-    row = g.row,
+    height = g.side_h,
+    row = start_row,
     col = g.col,
     border = "none",
     zindex = 45,
@@ -418,19 +494,18 @@ local function show_float()
     style = "minimal",
     width = g.w,
     height = g.h,
-    row = g.row,
+    row = start_row,
     col = g.col + g.sw,
     border = "rounded",
-    title = " " .. cur.name .. " ",
+    title = " " .. name_of(cur) .. " ",
     title_pos = "center",
     zindex = 50,
   })
-  vim.wo[p.win].winbar = ""
   p.visible = true
   watch(p.win, "float")
   watch(p.side, "float")
   M.refresh("float")
-  fade({ p.win, p.side }, FADE)
+  slide(g, name_of(cur), start_row, g.row)
   vim.cmd("startinsert")
 end
 
@@ -462,7 +537,7 @@ local function show_bottom()
   setup_side_win(p.side)
   vim.api.nvim_win_set_buf(p.side, ensure_side_buf("bottom"))
   vim.api.nvim_win_set_buf(p.win, cur.buf)
-  vim.wo[p.win].winbar = " " .. cur.name
+  vim.wo[p.win].winbar = " " .. name_of(cur)
   p.visible = true
   watch(p.win, "bottom")
   watch(p.side, "bottom")
@@ -499,16 +574,17 @@ function M.select(kind, id)
   end
   local p = panel[kind]
   vim.api.nvim_win_set_buf(p.win, t.buf)
-  vim.wo[p.win].winbar = " " .. t.name
-  if kind == "float" and is_win(p.win) then
-    pcall(vim.api.nvim_win_set_config, p.win, { title = " " .. t.name .. " ", title_pos = "center" })
+  vim.wo[p.win].winbar = " " .. name_of(t)
+  if kind == "float" then
+    local g = read_geom()
+    set_float_wins(g, g.row, name_of(t))
   end
   M.refresh(kind)
   vim.api.nvim_set_current_win(p.win)
   vim.cmd("startinsert")
 end
 
---- 当前面板内循环（<M-j> 上一个 / <M-k> 下一个）
+--- 当前面板内按列表顺序循环：delta=1 向下 / -1 向上
 function M.cycle(delta)
   local kind = M.current_kind()
   if not kind then
@@ -561,9 +637,8 @@ function M.items()
   local out = {}
   for _, spec in ipairs({ { "float", "浮" }, { "bottom", "底" } }) do
     local kind, tag = spec[1], spec[2]
-    local names = display_names(kind)
     for _, t in ipairs(M.terms(kind)) do
-      out[#out + 1] = { text = ("[%s] %s"):format(tag, names[t.id] or t.name), id = t.id, kind = kind }
+      out[#out + 1] = { text = ("[%s] %s"):format(tag, name_of(t)), id = t.id, kind = kind }
     end
   end
   vim.list_extend(out, snacks_items())
@@ -627,7 +702,7 @@ function M.setup()
           relative = "editor",
           style = "minimal",
           width = g.sw,
-          height = g.h,
+          height = g.side_h,
           row = g.row,
           col = g.col,
           border = "none",

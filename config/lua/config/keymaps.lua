@@ -118,9 +118,10 @@ map("n", "<leader>gB", function() require("snacks").gitbrowse() end, { desc = "�
 map("n", "<leader>tp", function() require("nvim-devkit.term").summon("float") end, { desc = "呼出/收起浮动终端" })
 map("n", "<leader>tb", function() require("nvim-devkit.term").summon("bottom") end, { desc = "呼出/收起底部终端" })
 map("n", "<leader>tl", function() require("nvim-devkit.term").picker() end, { desc = "终端列表（切换/杀）" })
-map("t", "<M-j>", function() require("nvim-devkit.term").cycle(-1) end, { desc = "上一个终端（同类）" })
-map("t", "<M-k>", function() require("nvim-devkit.term").cycle(1) end, { desc = "下一个终端（同类）" })
+map("t", "<M-j>", function() require("nvim-devkit.term").cycle(1) end, { desc = "下一个终端（列表向下）" })
+map("t", "<M-k>", function() require("nvim-devkit.term").cycle(-1) end, { desc = "上一个终端（列表向上）" })
 map("t", "<M-n>", function() require("nvim-devkit.term").new_like_current() end, { desc = "新建同类终端" })
+map("t", "<M-r>", function() require("nvim-devkit.term").rename_current() end, { desc = "重命名当前终端" })
 
 -- ── 搜索跳转后保持上下文 ──────────────────────────────
 map("n", "n", "nzzzv", { desc = "下一个匹配（居中）" })

@@ -3,10 +3,11 @@ local lib = dofile((vim.env.NVIM_DEVKIT_TESTS or vim.fn.fnamemodify(debug.getinf
 local term = require("nvim-devkit.term")
 term.setup()
 
-lib.ok("<M-j>/<M-k>/<M-n> 终端模式映射存在",
+lib.ok("<M-j>/<M-k>/<M-n>/<M-r> 终端模式映射存在",
   vim.fn.maparg("<M-j>", "t", false, true).callback ~= nil
     and vim.fn.maparg("<M-k>", "t", false, true).callback ~= nil
-    and vim.fn.maparg("<M-n>", "t", false, true).callback ~= nil)
+    and vim.fn.maparg("<M-n>", "t", false, true).callback ~= nil
+    and vim.fn.maparg("<M-r>", "t", false, true).callback ~= nil)
 
 lib.reset()
 term.summon("float")
