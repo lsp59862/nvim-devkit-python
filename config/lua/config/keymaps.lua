@@ -122,6 +122,8 @@ map("n", "<leader>tn", function()
 end, { desc = "新建浮动终端" })
 map("n", "<leader>tb", function() require("nvim-devkit.term").open_bottom() end, { desc = "底部终端开关" })
 map("n", "<leader>tl", function() require("nvim-devkit.term").picker() end, { desc = "终端列表（切换/杀/新建）" })
+map("t", "<M-j>", function() require("nvim-devkit.term").cycle(-1) end, { desc = "上一个终端（循环）" })
+map("t", "<M-k>", function() require("nvim-devkit.term").cycle(1) end, { desc = "下一个终端（循环）" })
 
 -- ── 搜索跳转后保持上下文 ──────────────────────────────
 map("n", "n", "nzzzv", { desc = "下一个匹配（居中）" })

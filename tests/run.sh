@@ -100,6 +100,7 @@ run_case scope_session_load 0
 run_case session_toggle 0
 run_case session_restore 0
 run_case terminal_multi 0
+run_case terminal_cycle 0
 run_case terminal_list 0
 run_case opencode_keys 0
 run_case dashboard_keys 0

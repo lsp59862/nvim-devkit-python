@@ -1,11 +1,16 @@
 -- 终端管理：统一 <leader>t*（浮动 / 底部 / 列表），opencode 面板独立于 <leader>ot
 --
--- snacks.terminal 以 cmd + cwd + 编号(count) 区分实例：数字前缀可多开，
--- 隐藏（q）不杀进程，列表里可切回；kill 才真正结束进程。
+-- snacks.terminal 以 cmd + cwd + 编号(count) 区分实例，全部终端共享同一张列表
+-- （浮动 / 底部 / opencode 面板都在里面）：
+--   · 数字前缀操作指定编号（如 2tt）；tt / tb 不带前缀时开关各自"最近使用"的那台
+--   · 隐藏（q）不杀进程，列表里可切回；kill 才真正结束进程
+--   · <M-j>/<M-k> 在共享列表里循环切换（含 opencode 面板）
 local M = {}
 
 M.FLOAT = { position = "float", width = 0.8, height = 0.8, border = "rounded" }
 M.BOTTOM = { position = "bottom", height = 0.3 }
+
+local last = { float = nil, bottom = nil }
 
 local function term_list()
   return require("snacks.terminal").list()
@@ -21,6 +26,7 @@ function M.entries()
       cmd = info.cmd,
       cwd = info.cwd or "",
       title = vim.b[t.buf].term_title or "",
+      buf = t.buf,
     }
   end
   table.sort(out, function(a, b)
@@ -42,17 +48,77 @@ function M.next_count()
   return i
 end
 
+local function slot_alive(id)
+  if id == nil then
+    return false
+  end
+  for _, e in ipairs(M.entries()) do
+    if e.id == id then
+      return true
+    end
+  end
+  return false
+end
+
+--- 不带编号时开关"最近使用"的同类终端；带编号则操作指定槽位
+local function toggle_slot(kind, count)
+  if count == nil then
+    if not slot_alive(last[kind]) then
+      last[kind] = M.next_count()
+    end
+    count = last[kind]
+  end
+  last[kind] = count
+  local win = kind == "float" and M.FLOAT or M.BOTTOM
+  require("snacks.terminal").toggle(nil, { count = count, win = vim.deepcopy(win) })
+end
+
 function M.open_float(count)
-  require("snacks.terminal").toggle(nil, { count = count, win = vim.deepcopy(M.FLOAT) })
+  toggle_slot("float", count)
 end
 
 function M.open_bottom(count)
-  require("snacks.terminal").toggle(nil, { count = count, win = vim.deepcopy(M.BOTTOM) })
+  toggle_slot("bottom", count)
 end
 
---- 聚焦某编号终端；已在其中则隐藏（可再次唤出）
+--- 聚焦某编号终端；已在其中则隐藏（列表 Enter 用）
 function M.focus(count)
   require("snacks.terminal").focus(nil, { count = count, win = vim.deepcopy(M.FLOAT) })
+end
+
+--- 显示并聚焦（不隐藏当前，循环切换用）
+function M.show(count)
+  for _, t in ipairs(term_list()) do
+    local info = vim.b[t.buf].snacks_terminal or {}
+    if (info.id or 1) == count then
+      t:show():focus()
+      return true
+    end
+  end
+  return false
+end
+
+--- 共享列表里循环切换；delta=1 下一个 / -1 上一个（含 opencode 面板）
+function M.cycle(delta)
+  local entries = M.entries()
+  if #entries == 0 then
+    M.open_float()
+    return
+  end
+  local cur = vim.api.nvim_get_current_buf()
+  local idx
+  for i, e in ipairs(entries) do
+    if e.buf == cur then
+      idx = i
+      break
+    end
+  end
+  if idx == nil then
+    idx = delta > 0 and 1 or #entries
+  else
+    idx = ((idx - 1 + delta) % #entries) + 1
+  end
+  M.show(entries[idx].id)
 end
 
 --- 真正结束进程（wipe buffer → SIGHUP）
