@@ -102,7 +102,9 @@ return {
             { icon = "", key = "f", desc = "查找文件", action = ":lua Snacks.picker.smart()" },
             { icon = "", key = "g", desc = "全项目搜索", action = ":lua Snacks.picker.grep()" },
             { icon = "", key = "u", desc = "撤销树", action = ":UndotreeToggle" },
-            { icon = "", key = "q", desc = "恢复会话", action = ":lua require('persistence').load()" },
+            { icon = "", key = "r", desc = "恢复会话", action = ":lua require('persistence').load()" },
+            -- 覆盖 snacks 默认的 q→<cmd>bd（会绕过 winbuf 接管并销毁启动页）：q 与 :q 一致
+            { icon = "", key = "q", desc = "退出 / 关当前 tab（同 :q）", action = ":q" },
             { icon = "", key = "?", desc = "快捷键大全", action = ":lua Snacks.picker.keymaps()" },
             { icon = "", key = "c", desc = "速查卡（救命键位）", action = ":e " .. repo_path("docs/CHEATSHEET.md") },
             { icon = "", key = "l", desc = "学习计划", action = ":e " .. repo_path("docs/LEARNING.md") },

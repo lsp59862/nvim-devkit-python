@@ -29,6 +29,9 @@ rm -rf "$WORK"
 mkdir -p "$WORK/xdg-config"
 ln -sfn "$ROOT/config" "$WORK/xdg-config/nvim-devkit"
 export XDG_CONFIG_HOME="$WORK/xdg-config"
+# 只沙箱 state（会话/undo/shada），不沙箱 data：lazy 仍需真实插件目录
+mkdir -p "$WORK/xdg-state"
+export XDG_STATE_HOME="$WORK/xdg-state"
 export NVIM_APPNAME="nvim-devkit"
 export NVIM_DEVKIT_TESTS="$TESTS"
 export NVIM_DEVKIT_TEST_DIR="$WORK"
@@ -93,7 +96,9 @@ run_case scope_quit 0
 run_case scope_tabclose 0
 run_case scope_session_save 0
 run_case scope_session_load 0
+run_case session_toggle 0
 run_case opencode_keys 0
+run_case dashboard_keys 0
 run_case winbuf_exit_dashboard 1
 run_case winbuf_exit_command 1
 

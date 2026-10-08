@@ -64,10 +64,30 @@ map("n", "<leader>sk", function() require("snacks").picker.keymaps() end, { desc
 map("n", "<leader>sc", function() require("snacks").picker.commands() end, { desc = "命令列表" })
 map("n", "<leader>sh", function() require("snacks").picker.help() end, { desc = "帮助文档" })
 
--- ── 会话（关错终端/重启后恢复现场）────────────────────
+-- ── 会话（关错终端/重启后恢复现场；保存是退出时自动的）──
 map("n", "<leader>qs", function() require("persistence").load() end, { desc = "恢复本目录会话" })
 map("n", "<leader>ql", function() require("persistence").load({ last = true }) end, { desc = "恢复上次会话" })
-map("n", "<leader>qd", function() require("persistence").stop() end, { desc = "停止保存会话" })
+
+local function session_autosave(enabled)
+  local p = require("persistence")
+  if enabled == p.active() then
+    vim.notify(("会话自动保存已%s"):format(enabled and "开启" or "停止"), vim.log.levels.INFO, { title = "会话" })
+    return
+  end
+  if enabled then
+    if type(p.start) ~= "function" then
+      vim.notify("当前 persistence 版本无法重新开启，请重启 nvim", vim.log.levels.WARN, { title = "会话" })
+      return
+    end
+    p.start()
+    vim.notify("会话自动保存已重新开启", vim.log.levels.INFO, { title = "会话" })
+  else
+    p.stop()
+    vim.notify("会话自动保存已停止（<leader>qe 重新开启）", vim.log.levels.WARN, { title = "会话" })
+  end
+end
+map("n", "<leader>qd", function() session_autosave(false) end, { desc = "停止会话自动保存（qe 可重新开启）" })
+map("n", "<leader>qe", function() session_autosave(true) end, { desc = "重新开启会话自动保存" })
 
 -- ── 回主页 ───────────────────────────────────────────
 local function home()
