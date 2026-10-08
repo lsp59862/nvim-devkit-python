@@ -106,7 +106,7 @@
 - 练习：写坏一段代码 → 用 `:earlier 2m` 救回 → 再用 undotree 精确挑回某个中间版本
 
 ### Day 6 — 终端与 opencode 入门
-- 终端面板：`<leader>tp` 浮动 / `<leader>tb` 底部（呼出/收起，没有终端时自动创建；各带侧边栏，鼠标可点、`<CR>` 可切）· `<leader>tl` 列表；终端内 `<M-n>` 新建同类、`<M-j>`/`<M-k>` 同类循环、`<Esc><Esc>` 回普通模式
+- 终端面板：`<leader>tp` 浮动 / `<leader>tb` 底部（呼出/收起，没有终端时自动创建；各带侧边栏，鼠标可点、`<CR>` 可切）· `<leader>tl` 列表；终端内 `<M-n>` 新建同类、`<M-j>`/`<M-k>` 按列表向下/向上循环、`<M-r>` 重命名、`<Esc><Esc>` 回普通模式；浮动面板从底部滑入/滑出
 - `<leader>oa`：输入问题，`@this` 自动带上光标处上下文
 - `<leader>ot`：右侧 opencode 面板开关；`<leader>os`：内置动作面板（解释/修复/审查等）
 - 练习：让 opencode 解释当前函数、修复一个 lint 错误，并在 diff 里接受/拒绝
@@ -219,7 +219,7 @@
 | `<leader>m*` | Jupyter | `mi` `ml` `mv` `mr` `mo` |
 | `<leader>g*` | Git | `gg`（lazygit）`gs` `gr` `gp` `gb` |
 | `<leader>o*` | opencode | `oa` `os` `ot` `op` `of` |
-| `<leader>t*` | 终端面板 | `tp` 浮动 · `tb` 底部 · `tl` 列表 | `M-n` 新建 · `M-j`/`M-k` 同类循环 |
+| `<leader>t*` | 终端面板 | `tp` 浮动 · `tb` 底部 · `tl` 列表 | `M-n` 新建 · `M-j`/`M-k` 循环 · `M-r` 重命名 |
 | `<leader>q*` | 会话 | `qs` `ql` `qd` `qe` |
 | `<leader>r*` | 渲染 | `rt`（PDF 图片模式） |
 | `Ctrl-g` | **恐慌重置** | 任何时候按 |
