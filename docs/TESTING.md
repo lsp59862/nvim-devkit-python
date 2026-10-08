@@ -22,10 +22,11 @@ cd ~/nvim-devkit
 
 - 使用**仓库里的 config**（通过 `XDG_CONFIG_HOME` 临时软链），不依赖本机是否已经安装；插件/解析器复用已安装的数据目录
 - 每个用例跑在**独立 nvim 进程**（`--headless`），避免状态互相污染
+- `XDG_STATE_HOME` 指向测试目录（`$WORK/xdg-state`）：会话 / undo / shada 全部沙箱，不会写真实的 `~/.local/state/nvim-devkit`
 - nvim 可执行文件查找顺序：`NVIM_DEVKIT_BIN` 环境变量 → `~/.local/share/nvim-devkit/nvim/bin/nvim` → PATH 中的 `nvim`
 - 失败时完整日志留在 `/tmp/nvim-devkit-tests/log-<用例>.txt`
 
-## 覆盖范围（21 个用例 / 44 项断言）
+## 覆盖范围（23 个用例 / 55 项断言）
 
 | 用例 | 覆盖行为 |
 | --- | --- |
@@ -43,7 +44,9 @@ cd ~/nvim-devkit
 | `scope_quit` | tab 内 `:q` 回 dashboard，其它 tab 不受影响 |
 | `scope_tabclose` | "关过 tab 再新增"后序列化不错位 |
 | `scope_session_save` / `scope_session_load` | 各 tab 文件归属随会话保存/恢复（含关过 tab 的场景） |
+| `session_toggle` | 会话自动保存开关闭环：前置开启 · `qd` 停止后退出不写会话文件 · `qe` 重新开启后恢复写入且含当前文件 |
 | `opencode_keys` | opencode 插件 1.x 公开 API 存在性（`ask/select/prompt/operator`，无 `toggle`）· `<leader>ot` 映射存在（n/t）· stub 验证调用 `snacks.terminal.toggle("opencode --port", 右侧面板)` |
+| `dashboard_keys` | 启动页按键契约：`r` = 恢复会话（persistence.load）· `q` = `:q`（防回退到 snacks 默认的 `<cmd>bd`）· buffer 内映射存在 |
 | `winbuf_exit_dashboard` | 退出类：dashboard 上 `:q` → 退出 nvim |
 | `winbuf_exit_command` | 退出类：`:exit` 有无未保存修改都直接退出 |
 
@@ -58,7 +61,8 @@ cd ~/nvim-devkit
 | `<leader>wd` | 只关窗口；单窗口 / dashboard 上拒绝并提示 |
 | `:exit` | 无条件退出 nvim |
 | tab 工作区（scope） | 每个 tab 独立文件列表；同一文件跨 tab 仍是同一个 buffer |
-| 会话（persistence + scope_bridge） | 各 tab 的文件归属随会话保存/恢复 |
+| 会话（persistence + scope_bridge） | 各 tab 的文件归属随会话保存/恢复；自动保存在退出且 ≥1 有名文件时触发；`qd` / `qe` 成对开关 |
+| 启动页按键 | 普通键 `r` 恢复会话；`q` 与 `:q` 一致（单 tab 退出 / 多 tab 关当前 tab） |
 
 ## 新增用例
 

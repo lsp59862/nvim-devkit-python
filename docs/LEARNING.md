@@ -86,7 +86,7 @@
 - `Ctrl-h/j/k/l` 跨窗口；`<leader>wo / w= / wd`；`Ctrl+Tab / Ctrl+Shift+Tab` 切标签页
 - **tab = 工作区**：每个 tab 的文件列表相互隔离，切过去只看到那个 tab 的文件；同一文件跨 tab 是同一个 buffer（撤销/修改共享）
 - **文件/窗口语义**：`:q`=关文件但布局不动（当前窗口切到最近使用的其它文件；同文件其他分屏继续显示；没有其它文件时显示 dashboard，程序不退出；在 dashboard 上 `:q` 才退出 nvim，多 tab 则只关当前 tab；`:new` 的无名 buffer 同样按文件处理）；`:bd`/`<leader>bd`=关文件+（多窗口时）关当前窗口（未保存弹三选项，dashboard 上拒绝）；`<leader>wd`=只关窗口（单窗口/dashboard 上拒绝）；`:exit`=无条件退出。tab 只是窗口布局容器，`<leader>qh` 在普通窗口打开启动页
-- 会话：`<leader>qs` 存/恢复本目录、`<leader>ql` 恢复上次、`<leader>qd` 停止记录
+- 会话：**退出时自动保存现场**（还要有文件才存）；`<leader>qs` 恢复本目录、`<leader>ql` 恢复最近、`<leader>qd` 停 / `<leader>qe` 重新开启自动保存；启动页普通键 `r` 恢复会话、`q` 同 `:q`
 - 练习：重启 nvim 后用 `<leader>ql` 回到所有打开的文件与光标位置
 
 ### Day 4 — 搜索与替换
@@ -163,7 +163,7 @@
 
 ### Day 14 — 项目与会话管理
 - `<leader>fp` 项目列表、`<leader>fr` 最近文件、`<leader>fg` 只搜 Git 文件
-- persistence 自动记录每个目录的会话；与 tmux 配合：重连 → nvim → `<leader>ql`
+- persistence 在退出时自动记录每个目录的会话（`<leader>qd` / `qe` 可停 / 开）；与 tmux 配合：重连 → nvim → `<leader>ql`
 - 练习：模拟断线重连，恢复现场继续干活
 
 ---
@@ -218,7 +218,7 @@
 | `<leader>m*` | Jupyter | `mi` `ml` `mv` `mr` `mo` |
 | `<leader>g*` | Git | `gg`（lazygit）`gs` `gr` `gp` `gb` |
 | `<leader>o*` | opencode | `oa` `os` `ot` `op` `of` |
-| `<leader>q*` | 会话 | `qs` `ql` `qd` |
+| `<leader>q*` | 会话 | `qs` `ql` `qd` `qe` |
 | `<leader>r*` | 渲染 | `rt`（PDF 图片模式） |
 | `Ctrl-g` | **恐慌重置** | 任何时候按 |
 | `s` / `S` | Flash 跳转 / 选节点 | |

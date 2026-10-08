@@ -111,7 +111,7 @@ cd ~/nvim-devkit && ./install.sh --update
 | PDF | 文本双栏提取（任何终端）+ Kitty 终端下的图片模式（`<leader>rt`） |
 | Git | gitsigns + lazygit 浮窗 + gitbrowse |
 | AI | opencode.nvim（`<leader>oa` 提问并注入当前上下文，编辑 diff 审阅） |
-| 会话 | persistence（`<leader>ql` 一键回到上次现场） |
+| 会话 | persistence（退出时自动存现场；`<leader>qs`/`ql` 恢复，`qd`/`qe` 开关） |
 | 恢复 | 持久化撤销 + undotree + `:earlier 10m` + `Ctrl-g` 恐慌重置 |
 | 窗口/文件语义 | 统一可预测的 `:q` / `:bd` / `<leader>wd` / `:exit` 行为（见下文「文件 / 窗口 / 标签页语义」） |
 
@@ -157,17 +157,38 @@ Neovim 原生的"关文件 / 关窗口"语义很容易踩坑（同一个键在�
 | --- | --- |
 | `<leader>qh` / `:NvkitHome` | 在当前窗口打开 dashboard（普通 buffer，非浮窗） |
 | `:exit` / `:exit!` | 无条件退出 nvim（即使有未保存修改，也不提示） |
+| `<leader>qs` / `<leader>ql` | 恢复本目录会话 / 恢复最近一次会话 |
+| `<leader>qd` / `<leader>qe` | 停止 / 重新开启会话自动保存（成对可逆） |
 | `<C-Tab>` / `<C-S-Tab>` | 下 / 上一个标签页（需终端支持发送 Ctrl+Tab） |
 
 > 规则细节：只有"有名文件"参与自动切换；没有有名文件时一律显示 dashboard。help / quickfix / 终端 / 浮窗保持 Neovim 原生行为。
 
 ### tab = 工作区（隔离）
 
-每个 tab 拥有独立的文件列表（由 scope.nvim 通过 `buflisted` 切换实现）：切换 tab 后，`:ls`、`<leader>,`（buffer 列表）、`:bnext` / `<Tab>` 只会看到/循环**当前 tab 的文件**；`:q` / `:bd` 的"其它文件"也只看本 tab（tab 内文件清空后回 dashboard）。会话保存/恢复（`<leader>qs` / `<leader>ql`）会保留各 tab 的文件归属。
+每个 tab 拥有独立的文件列表（由 scope.nvim 通过 `buflisted` 切换实现）：切换 tab 后，`:ls`、`<leader>,`（buffer 列表）、`:bnext` / `<Tab>` 只会看到/循环**当前 tab 的文件**；`:q` / `:bd` 的"其它文件"也只看本 tab（tab 内文件清空后回 dashboard）。退出时自动保存的会话（`<leader>qs` / `ql` 恢复）会保留各 tab 的文件归属。
 
 - 同一文件在两个 tab 打开时**就是同一个 buffer**（内容、撤销历史、修改状态共享）——tab 只是窗口布局容器，这是 Neovim 的全局 buffer 模型；要完全独立只能开多个 nvim 实例
 - 相关命令：`:ScopeList`（查看各 tab 的文件归属）、`:ScopeMoveBuf`（把当前 buffer 移到指定 tab）
 - 新 tab 里打开"已在其它 tab 打开的文件"时，会在两个 tab 都可见（共享同一 buffer）
+
+### 会话：什么时候自动存、q 之后会发生什么
+
+会话 = 某个目录的现场快照（打开的文件、窗口 / tab 布局、各 tab 文件归属、光标 / 折叠）。规则：
+
+- **自动保存**：只在退出 nvim 时存一次；当时还有 ≥1 个有名文件才存（只剩 dashboard 不会覆盖旧快照）
+- **按目录隔离**：每个 cwd 一个快照（非 main/master 分支再按分支区分），存在 `~/.local/state/nvim-devkit/sessions/`
+- **恢复**：`<leader>qs` 本目录 · `<leader>ql` 最近一次 · 启动页普通键 `r`；没有快照时静默返回
+- **开关**：`<leader>qd` 停止本次运行的自动保存，`<leader>qe` 重新开启（可逆）；启动页 `q` 与 `:q` 语义一致
+
+每个 tab 只有两个状态，`:q` 的闭环如下：
+
+```
+  工作(≥1 文件) ── :q 关完最后一个文件 ──> dashboard ── :q ──> 退出(单 tab)
+      ^                                     │               └─ 关当前 tab(多 tab)
+      └────── 打开文件(e / f / picker…) ─────┘
+```
+
+dashboard 上各操作：`r` 恢复会话 · `q` / `:q` 退出（多 tab 时关当前 tab）· `:bd` / `<leader>wd` 拒绝并提示 · `:exit` 无条件退出。
 
 ## 目录结构
 
@@ -195,7 +216,7 @@ Vim 的"模式 + 前缀键 + 寄存器"让误按后果难以预期。本配置�
 3. **可预测的取消语义**：`Esc` 取消一切待定操作并清高亮；插件浮窗一律 `Esc` 关闭。
 4. **状态可见**：which-key 200ms 显示所有可能路径；状态栏显示模式与宏录制状态；noice 显示命令回显。
 5. **防误触**：`Q`（Ex 模式）禁用；关闭自动执行项目内配置（`exrc=false`）。
-6. **现场恢复**：`<leader>ql` 恢复上次会话（buffer/窗口/布局）。
+6. **现场恢复**：退出时自动存现场，`<leader>qs` / `<leader>ql` 恢复（buffer / 窗口 / 布局 / 各 tab 归属）；`<leader>qd` / `<leader>qe` 可停 / 开自动保存。
 
 完整对照表见 [docs/LEARNING.md](docs/LEARNING.md) 的「误按恢复手册」。
 
@@ -254,11 +275,11 @@ Vim 的"模式 + 前缀键 + 寄存器"让误按后果难以预期。本配置�
 ## 行为测试
 
 ```bash
-./tests/run.sh           # 行为测试：21 个用例 / 44 项断言，必须全部通过
+./tests/run.sh           # 行为测试：23 个用例 / 55 项断言，必须全部通过
 scripts/checkhealth.sh   # 健康检查：硬错误必须为 0
 ```
 
-- 覆盖 `:q` / `:bd` / `<leader>wd` / `:exit` / dashboard / tab 工作区 / 会话恢复等**全部交互语义**（含真实按键路径与"退出程序"类行为）
+- 覆盖 `:q` / `:bd` / `<leader>wd` / `:exit` / dashboard / tab 工作区 / 会话恢复与自动保存开关等**全部交互语义**（含真实按键路径与"退出程序"类行为）
 - 每个用例独立 nvim 进程、使用仓库里的 config，不依赖本机是否已安装
 - **修改任何交互行为后必须跑一遍**，规则与用例清单见 `docs/TESTING.md` 与 `AGENTS.md`
 
