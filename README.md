@@ -111,7 +111,7 @@ cd ~/nvim-devkit && ./install.sh --update
 | PDF | 文本双栏提取（任何终端）+ Kitty 终端下的图片模式（`<leader>rt`） |
 | Git | gitsigns + lazygit 浮窗 + gitbrowse |
 | AI | opencode.nvim（`<leader>oa` 提问并注入当前上下文，编辑 diff 审阅） |
-| 终端 | 浮动 / 底部 / 多开 + 列表（`<leader>tt`/`tn`/`tb`/`tl`；`2tt` 第二台，终端内 `<M-j>`/`<M-k>` 循环切换） |
+| 终端 | 浮动 / 底部 / 多开 + 列表（`<leader>tt`/`tn`/`tb`/`tl`；`2tt` 第二台；同类同时只显示一台；终端内 `<M-j>`/`<M-k>` 循环切换） |
 | 会话 | persistence（退出时自动存现场；`<leader>qs`/`ql` 恢复，`qd`/`qe` 开关） |
 | 恢复 | 持久化撤销 + undotree + `:earlier 10m` + `Ctrl-g` 恐慌重置 |
 | 窗口/文件语义 | 统一可预测的 `:q` / `:bd` / `<leader>wd` / `:exit` 行为（见下文「文件 / 窗口 / 标签页语义」） |
