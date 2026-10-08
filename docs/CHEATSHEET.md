@@ -75,7 +75,7 @@
 | `<leader>m*` | Jupyter | `mi` 初始化 · `ml` 跑行 · `mv` 跑选中 · `mr` 重跑 · `mo/mh` 显示隐藏 |
 | `<leader>g*` | Git | `gg` lazygit · `gs` 暂存块 · `gr` 撤销块 · `gp` 预览 · `gb` blame |
 | `<leader>o*` | opencode | `oa` 提问（带上下文）· `os` 动作面板 · `ot` 面板开关 · `of` 整文件 |
-| `<leader>t*` | 终端 | `tt` 浮动开关（`2tt` 第 2 台）· `tn` 新建 · `tb` 底部 · `tl` 列表 |
+| `<leader>t*` | 终端面板 | `tp` 浮动 · `tb` 底部 · `tl` 列表（各带侧边栏） |
 | `<leader>q*` | 会话 / 主页 | `qs` 恢复本目录 · `ql` 恢复最近 · `qd` 停自动保存 · `qe` 重新开启 · `qh` 回启动页 |
 | `<leader>r*` | 渲染 | `rt` PDF 图片模式（Kitty 终端） |
 
@@ -91,7 +91,7 @@
 | `Tab` / `<S-Tab>` | 切 buffer | `gc` `gcc` | 注释 |
 | `sa` `sd` `sr` | 加/删/换包围（mini.surround） | `<M-h/j/k/l>` | 移动行/块（mini.move） |
 | `daa` `cia` | 删/改一个参数（mini.ai） | `af` / `if` | 整个/内部函数（treesitter） |
-| `s` 后输入词 | 任意位置三键直达 | `<leader>tt` | 浮动终端（`2tt` 第二台） |
+| `s` 后输入词 | 任意位置三键直达 | `<leader>tp` | 浮动终端面板 |
 | `<C-Tab>` / `<C-S-Tab>` | 下/上一个 tab | `:exit` | 无条件退出 nvim |
 | `<M-1>` / `Alt+1` | 行首（普通/插入通用） | `<M-0>` / `Alt+0` | 行末（普通/插入通用） |
 
@@ -128,9 +128,9 @@
 - PDF：`:e paper.pdf` 自动转文本，`]p/[p` 翻页；Kitty 终端下 `<leader>rt` 切图片模式
 
 ### 终端速记
-- 管理：`<leader>tt` 浮动开关（数字前缀多开，如 `2tt`）· `<leader>tn` 新建 · `<leader>tb` 底部 · `<leader>tl` 列表（Enter 切换，`<C-d>` 杀进程，`<C-n>` 新建）
-- 同类互斥：浮窗 / 底部各自**同时只显示一台**；`tt` / `tb` 关掉当前可见的那台，再按唤回最近一台
-- 终端里：`<M-j>` / `<M-k>` 循环切上一台/下一台（浮动、底部、opencode 面板**共享同一列表**）；`q` 只隐藏、进程不退出
+- 管理：`<leader>tp` 浮动面板 · `<leader>tb` 底部面板（呼出/收起；没有终端时自动创建）· `<leader>tl` 列表（Enter 切换，`<C-d>` 杀进程）
+- 面板 = 侧边栏 + 终端区：侧边栏显示 shell 简名并高亮当前，**鼠标点击 / `<CR>`** 切换；`q` 收起（进程不退出）
+- 终端内：`Alt+N` 新建同类终端 · `Alt+J` / `Alt+K` 同类循环 · `<Esc><Esc>` 回普通模式；浮动面板有淡入淡出动画
 - 只做编辑/调试：任何终端都行
 - 要看图（matplotlib / Markdown 内嵌图 / PDF 图片模式）：
   - **WezTerm**（推荐）：新版默认开启图形协议，无需配置；Windows 下图片不显示时用 `wezterm ssh` 连接（绕 ConPTY）
