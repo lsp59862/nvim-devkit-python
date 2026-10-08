@@ -20,7 +20,9 @@ vim.wait(300)
 
 local items = term.items()
 lib.ok("2 个终端按编号排序", #items == 2 and items[1].id == 1 and items[2].id == 2, vim.inspect(items))
-lib.ok("条目含编号与命令", items[2].text:find("sleep", 1, true) ~= nil, items[2].text)
+lib.ok("条目含编号与命令且无 term:// 噪声",
+  items[2].text:find("sleep", 1, true) ~= nil and not items[2].text:find("term://", 1, true),
+  items[2].text)
 
 local sp = require("snacks.picker")
 local orig = sp.pick
@@ -31,9 +33,10 @@ end
 local ok, err = pcall(term.picker)
 sp.pick = orig
 local keys = captured and captured.win and captured.win.list and captured.win.list.keys or {}
-lib.ok("picker 参数完整（items/confirm/kill/new）",
+lib.ok("picker 参数完整（items/format/confirm/kill/new）",
   ok and captured ~= nil
     and type(captured.items) == "table"
+    and captured.format == "text"
     and type(captured.confirm) == "function"
     and type((captured.actions or {}).term_kill) == "function"
     and type((captured.actions or {}).term_new) == "function"

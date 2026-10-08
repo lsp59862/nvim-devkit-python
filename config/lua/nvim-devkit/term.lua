@@ -74,8 +74,13 @@ local function label(e)
   end
   name = name or vim.fn.fnamemodify(vim.o.shell, ":t")
   local cwd = vim.fn.fnamemodify(e.cwd ~= "" and e.cwd or vim.fn.getcwd(), ":~")
-  local title = e.title ~= "" and ("  " .. e.title) or ""
-  return ("%d: %s  %s%s"):format(e.id, name, cwd, title)
+  -- nvim 的 term_title 形如 term://cwd//pid:/bin/bash → 去掉前缀噪声
+  local title = e.title:gsub("^term://.-//%d+:", "")
+  -- 标题与命令名重复时不再显示（如 shell 的 /bin/bash vs bash）
+  if title == "" or name:find(title, 1, true) or title:find(name, 1, true) then
+    title = ""
+  end
+  return ("%d: %s  %s%s"):format(e.id, name, cwd, title ~= "" and ("  " .. title) or "")
 end
 
 function M.items()
@@ -89,6 +94,7 @@ end
 function M.picker()
   require("snacks.picker").pick({
     title = "终端",
+    format = "text", -- 默认 file formatter 只认 item.file，会让只有 text 的条目显示成空白
     items = M.items(),
     confirm = function(_, item)
       M.focus(item.id)
