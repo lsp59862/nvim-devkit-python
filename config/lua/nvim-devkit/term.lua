@@ -60,17 +60,62 @@ local function slot_alive(id)
   return false
 end
 
---- 不带编号时开关"最近使用"的同类终端；带编号则操作指定槽位
+local function term_kind(t)
+  return vim.b[t.buf].nvkit_term_kind
+end
+
+--- 同类终端是否正在显示（浮动含外部浮窗；底部只认本模块创建的）
+local function is_kind(t, kind)
+  if kind == "float" then
+    return t:is_floating() or (t:valid() and term_kind(t) == "float")
+  end
+  return t:valid() and not t:is_floating() and term_kind(t) == "bottom"
+end
+
+local function visible_of_kind(kind)
+  local out = {}
+  for _, t in ipairs(term_list()) do
+    if is_kind(t, kind) then
+      out[#out + 1] = t
+    end
+  end
+  return out
+end
+
+--- 同类互斥：显示某台时隐藏其它同类，避免多个浮窗/底部分屏同时占屏
+local function hide_others(kind, keep_buf)
+  for _, t in ipairs(visible_of_kind(kind)) do
+    if t.buf ~= keep_buf then
+      t:hide()
+    end
+  end
+end
+
+--- 不带编号时开关"当前可见"的同类终端（没有则唤回最近的/新建）；
+--- 带编号则精确操作指定槽位
 local function toggle_slot(kind, count)
   if count == nil then
+    local vis = visible_of_kind(kind)
+    if #vis > 0 then
+      for _, t in ipairs(vis) do
+        t:hide()
+      end
+      return
+    end
     if not slot_alive(last[kind]) then
       last[kind] = M.next_count()
     end
     count = last[kind]
   end
   last[kind] = count
+  local snacks_term = require("snacks.terminal")
   local win = kind == "float" and M.FLOAT or M.BOTTOM
-  require("snacks.terminal").toggle(nil, { count = count, win = vim.deepcopy(win) })
+  snacks_term.toggle(nil, { count = count, win = vim.deepcopy(win) })
+  local t = snacks_term.get(nil, { count = count, win = vim.deepcopy(win) })
+  if t then
+    vim.b[t.buf].nvkit_term_kind = kind
+    hide_others(kind, t.buf)
+  end
 end
 
 function M.open_float(count)
@@ -83,14 +128,29 @@ end
 
 --- 聚焦某编号终端；已在其中则隐藏（列表 Enter 用）
 function M.focus(count)
-  require("snacks.terminal").focus(nil, { count = count, win = vim.deepcopy(M.FLOAT) })
+  local cur = vim.api.nvim_get_current_buf()
+  for _, t in ipairs(term_list()) do
+    local info = vim.b[t.buf].snacks_terminal or {}
+    if (info.id or 1) == count then
+      if t:valid() and cur == t.buf then
+        t:hide()
+        return true
+      end
+      return M.show(count)
+    end
+  end
+  return false
 end
 
---- 显示并聚焦（不隐藏当前，循环切换用）
+--- 显示并聚焦（不隐藏当前，循环切换用；同类互斥）
 function M.show(count)
   for _, t in ipairs(term_list()) do
     local info = vim.b[t.buf].snacks_terminal or {}
     if (info.id or 1) == count then
+      local kind = term_kind(t) or (t:is_floating() and "float" or nil)
+      if kind then
+        hide_others(kind, t.buf)
+      end
       t:show():focus()
       return true
     end
