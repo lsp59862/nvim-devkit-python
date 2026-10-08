@@ -111,7 +111,7 @@ cd ~/nvim-devkit && ./install.sh --update
 | PDF | 文本双栏提取（任何终端）+ Kitty 终端下的图片模式（`<leader>rt`） |
 | Git | gitsigns + lazygit 浮窗 + gitbrowse |
 | AI | opencode.nvim（`<leader>oa` 提问并注入当前上下文，编辑 diff 审阅） |
-| 终端 | 浮动 / 底部 / 多开 + 列表（`<leader>tt`/`tn`/`tb`/`tl`；`2tt` 第二台，列表可切换与杀进程） |
+| 终端 | 浮动 / 底部 / 多开 + 列表（`<leader>tt`/`tn`/`tb`/`tl`；`2tt` 第二台，终端内 `<M-j>`/`<M-k>` 循环切换） |
 | 会话 | persistence（退出时自动存现场；`<leader>qs`/`ql` 恢复，`qd`/`qe` 开关） |
 | 恢复 | 持久化撤销 + undotree + `:earlier 10m` + `Ctrl-g` 恐慌重置 |
 | 窗口/文件语义 | 统一可预测的 `:q` / `:bd` / `<leader>wd` / `:exit` 行为（见下文「文件 / 窗口 / 标签页语义」） |
@@ -277,7 +277,7 @@ Vim 的"模式 + 前缀键 + 寄存器"让误按后果难以预期。本配置�
 ## 行为测试
 
 ```bash
-./tests/run.sh           # 行为测试：29 个用例 / 100 项断言，必须全部通过
+./tests/run.sh           # 行为测试：30 个用例 / 109 项断言，必须全部通过
 scripts/checkhealth.sh   # 健康检查：硬错误必须为 0
 ```
 

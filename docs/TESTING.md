@@ -26,7 +26,7 @@ cd ~/nvim-devkit
 - nvim 可执行文件查找顺序：`NVIM_DEVKIT_BIN` 环境变量 → `~/.local/share/nvim-devkit/nvim/bin/nvim` → PATH 中的 `nvim`
 - 失败时完整日志留在 `/tmp/nvim-devkit-tests/log-<用例>.txt`
 
-## 覆盖范围（29 个用例 / 100 项断言）
+## 覆盖范围（30 个用例 / 109 项断言）
 
 | 用例 | 覆盖行为 |
 | --- | --- |
@@ -49,7 +49,8 @@ cd ~/nvim-devkit
 | `session_restore` | 自动恢复（opt-in）门闸：默认关 · headless 永不恢复 · 开关/参数/UI/快照四条件真值表 · `session_file` 有无快照两态 |
 | `completion_keys` | 补全键位契约：Enter=接受 · Tab/S-Tab=下/上一项 · Esc=取消预览 · C-y 仍可接受 · normal Tab 不受影响 |
 | `tutor` | 官方教程未被禁用：`:Tutor` 存在且能打开（按 v:lang 自动选中文版） |
-| `terminal_multi` | 终端多开：浮动位置（relative≈editor）· 编号递增与复用 · `kill` 真正结束进程 |
+| `terminal_multi` | 终端多开：浮动位置（relative≈editor）· tt/tb 各自成台不抢槽位 · 编号递增与复用 · `kill` 真正结束进程 |
+| `terminal_cycle` | `<M-j>`/`<M-k>` 循环切换：无终端自动开一台 · 下一个/回绕/上一个（共享列表） |
 | `terminal_list` | 终端列表：条目按编号排序含命令 · picker 参数（items/confirm/`<C-d>` 杀/`<C-n>` 新建）· `<leader>t*` 映射且旧 `<C-/>` 已移除 |
 | `opencode_keys` | opencode 插件 1.x 公开 API 存在性（`ask/select/prompt/operator`，无 `toggle`）· `<leader>ot` 映射存在（n/t）· stub 验证调用 `snacks.terminal.toggle("opencode --port", 右侧面板)` |
 | `dashboard_keys` | 启动页按键契约：`r` = 恢复会话（persistence.load）· `q` = `:q`（防回退到 snacks 默认的 `<cmd>bd`）· buffer 内映射存在 |
@@ -73,7 +74,7 @@ cd ~/nvim-devkit
 | 补全键位（blink.cmp） | 插入模式 Enter 接受 / Tab、S-Tab 浏览 / Esc、C-e 取消预览；normal 的 Tab 仍为 bnext |
 | 词级删除 | 插入/命令行 `<C-BS>` 与插入 `<C-H>` 删前词；插入 `<C-Del>` 按 VS Code 语义删后词（跳过空格，不吃下一个词） |
 | 官方教程 | `:Tutor` 可用（runtime 的 tutor 插件未被 lazy 禁用） |
-| 终端管理 | 终端只用 `<leader>t*` 开（无 Ctrl 开法）；浮动/底部/多开（数字前缀）· 列表切换 · `<C-d>` 杀进程 · 隐藏不杀进程 |
+| 终端管理 | 终端只用 `<leader>t*` 开（无 Ctrl 开法）；浮动/底部/多开（数字前缀）· 共享一个列表 · `<M-j>`/`<M-k>` 循环切换 · `<C-d>` 杀进程 · 隐藏不杀进程 |
 
 ## 新增用例
 

@@ -128,7 +128,8 @@
 - PDF：`:e paper.pdf` 自动转文本，`]p/[p` 翻页；Kitty 终端下 `<leader>rt` 切图片模式
 
 ### 终端速记
-- 管理：`<leader>tt` 浮动开关（数字前缀多开，如 `2tt`）· `<leader>tn` 新建 · `<leader>tb` 底部 · `<leader>tl` 列表（Enter 切换，`<C-d>` 杀进程，`<C-n>` 新建）；终端里 `q` 只隐藏、进程不退出
+- 管理：`<leader>tt` 浮动开关（数字前缀多开，如 `2tt`）· `<leader>tn` 新建 · `<leader>tb` 底部 · `<leader>tl` 列表（Enter 切换，`<C-d>` 杀进程，`<C-n>` 新建）
+- 终端里：`<M-j>` / `<M-k>` 循环切上一台/下一台（浮动、底部、opencode 面板**共享同一列表**）；`q` 只隐藏、进程不退出
 - 只做编辑/调试：任何终端都行
 - 要看图（matplotlib / Markdown 内嵌图 / PDF 图片模式）：
   - **WezTerm**（推荐）：新版默认开启图形协议，无需配置；Windows 下图片不显示时用 `wezterm ssh` 连接（绕 ConPTY）
