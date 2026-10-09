@@ -177,7 +177,7 @@
 
 **WezTerm 用户：让 `Ctrl+Shift+=` 生效**
 
-WezTerm 默认把 `Ctrl+=`（含 `Ctrl+Shift+=`）绑成缩放字号。把下面整段贴进 WezTerm 配置（Windows：`%USERPROFILE%\.wezterm.lua`；Linux/macOS：`~/.wezterm.lua` 或 `~/.config/wezterm/wezterm.lua`），保存即热加载，**重启 nvim** 生效：
+WezTerm 默认把 `Ctrl+=`（含 `Ctrl+Shift+=`）绑成缩放字号。把下面整段贴进 WezTerm 配置（Windows：`%USERPROFILE%\.wezterm.lua`；Linux/macOS：`~/.wezterm.lua` 或 `~/.config/wezterm/wezterm.lua`），保存即热加载，**重启 nvim** 生效。方案是"字号缩放直接禁用、Ctrl+Shift+= 留给 nvim"（想保留缩放可自行把 disable 行换成绑定到别的组合键）：
 
 ```lua
 local wezterm = require 'wezterm' -- 注意：没有全局 wezterm，必须 require 后使用
@@ -192,11 +192,14 @@ config.keys = {
   { key = "=", mods = "CTRL", action = act.DisableDefaultAssignment },
   { key = "=", mods = "CTRL|SHIFT", action = act.DisableDefaultAssignment },
   { key = "mapped:+", mods = "CTRL", action = act.DisableDefaultAssignment },
+  { key = "mapped:+", mods = "CTRL|SHIFT", action = act.DisableDefaultAssignment },
 
-  -- 字号缩放挪到 Ctrl+Alt
-  { key = "=", mods = "CTRL|ALT", action = act.IncreaseFontSize },
-  { key = "-", mods = "CTRL|ALT", action = act.DecreaseFontSize },
-  { key = "0", mods = "CTRL|ALT", action = act.ResetFontSize },
+  -- 字号缩放彻底禁用（含 - / 0 / SUPER 系）
+  { key = "-", mods = "CTRL", action = act.DisableDefaultAssignment },
+  { key = "0", mods = "CTRL", action = act.DisableDefaultAssignment },
+  { key = "=", mods = "SUPER", action = act.DisableDefaultAssignment },
+  { key = "-", mods = "SUPER", action = act.DisableDefaultAssignment },
+  { key = "0", mods = "SUPER", action = act.DisableDefaultAssignment },
 }
 
 return config
