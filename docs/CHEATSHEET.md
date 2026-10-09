@@ -203,7 +203,8 @@ return config
 ```
 
 验证：nvim 里 `<C-v>` 再按 `Ctrl+Shift+=` 应显示 `<C-S-=>`；`wezterm show-keys --lua` 可查看生效绑定。
-配置文件已有其它内容时**不要整份覆盖**：只把 `enable_kitty_keyboard` 与 `config.keys` 两块合并进去，并确保文件顶部有 `local wezterm = require 'wezterm'`。
+
+合并进已有配置时注意：WezTerm 配置里**既没有全局 `wezterm`，也没有全局 `config`**。文件必须以 `local wezterm = require 'wezterm'` 开头，用 `local config = wezterm.config_builder()` 获取配置对象，并在末尾 `return config`（若原文件是 `return { ... }` 风格，则直接在 table 里加 `keys = { ... }` 字段，无需 builder）。只加一行 `require` 或直接写裸 `config.keys` 都会报 `attempt to index a nil value`。
 
 回退（键盘布局/协议异常时；仍是同一个物理键）：把 `CTRL|SHIFT` 那行换成
 `{ key = "=", mods = "CTRL|SHIFT", action = act.SendKey { key = "F13" } }`（devkit 已接 `<F13>`）。
