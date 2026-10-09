@@ -14,7 +14,7 @@ lib.ok("初始无终端且面板收起",
   ("n=%d f=%s b=%s"):format(term.count(), tostring(term.visible("float")), tostring(term.visible("bottom"))))
 
 term.summon("float")
-vim.wait(400)
+vim.wait(600)
 lib.ok("tp 创建并显示浮动面板", term.count("float") == 1 and term.visible("float"),
   ("n=%d vis=%s"):format(term.count("float"), tostring(term.visible("float"))))
 lib.ok("浮动主窗是浮窗（relative≈editor）", (function()
@@ -41,7 +41,7 @@ lib.ok("当前项高亮组生效（NvkitTermCurrent）", (function()
 end)())
 
 term.summon("float")
-vim.wait(400)
+vim.wait(700)
 lib.ok("再按 tp 收起且不新建", term.count("float") == 1 and not term.visible("float"),
   ("n=%d vis=%s"):format(term.count("float"), tostring(term.visible("float"))))
 

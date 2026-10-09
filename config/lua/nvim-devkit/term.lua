@@ -14,7 +14,15 @@ local uv = vim.uv or vim.loop
 local FLOAT_RATIO = { w = 0.8, h = 0.8 }
 local BOTTOM_RATIO = 0.3
 local SIDE_MIN, SIDE_MAX = 12, 20
-local SLIDE_STEPS, SLIDE_MS = 14, 22
+local SLIDE_MS = 420 -- 展开总时长（毫秒）
+local SLIDE_MS_CLOSE = 300 -- 折叠总时长（毫秒，比展开略快更干脆）
+local SLIDE_TICK = 16 -- 帧间隔（毫秒）
+-- 中心展开动画的相位分界（0~1 的展开度）：
+--   [0, OPEN_LINE)   点 → 水平中线
+--   [OPEN_LINE, OPEN_SIDE) 中线 → 上下分裂
+--   [OPEN_SIDE, 1]   侧边栏向左展开
+local OPEN_LINE = 0.42
+local OPEN_SIDE = 0.78
 local CURRENT_HL = "NvkitTermCurrent"
 local NS = vim.api.nvim_create_namespace("nvkit_term_side")
 
@@ -266,7 +274,7 @@ function M.rename_current()
     local p = panel[t.kind]
     if in_current_tab(p.win) and p.cur == t.id and t.kind == "float" then
       local g = read_geom()
-      set_float_wins(g, g.row, name_of(t))
+      set_float_wins(g, g.row, g.h, name_of(t))
     end
     vim.schedule(function()
       if in_current_tab(p.win) and vim.api.nvim_get_current_win() == p.win then
@@ -383,14 +391,16 @@ read_geom = function()
   return { row = wc.row, col = sc.col, h = wc.height, w = wc.width, sw = sc.width }
 end
 
-set_float_wins = function(g, row, title)
+--- 重配两个浮窗；h 为内容高度（可动画），row 为顶边框所在行
+set_float_wins = function(g, row, h, title)
   local p = panel.float
+  h = math.max(1, h or g.h)
   if is_win(p.side) then
     pcall(vim.api.nvim_win_set_config, p.side, {
       relative = "editor",
       style = "minimal",
       width = g.sw,
-      height = g.h,
+      height = h,
       row = row,
       col = g.col,
       border = "rounded",
@@ -401,7 +411,7 @@ set_float_wins = function(g, row, title)
       relative = "editor",
       style = "minimal",
       width = g.w,
-      height = g.h,
+      height = h,
       row = row,
       col = g.col + g.sw + 2,
       border = "rounded",
@@ -411,26 +421,248 @@ set_float_wins = function(g, row, title)
   end
 end
 
---- 浮动面板平移（滑入/滑出）；ease-out 让进入更柔和
-local function slide(g, title, row_from, row_to, done)
+local function round(x)
+  return math.floor(x + 0.5)
+end
+
+--- 由"展开度" q（0 = 中心一点，1 = 完全展开）计算两个浮窗几何。
+--- 关键约束：nvim 会把浮窗夹回"完整可见"——所以全程都在屏内做文章：
+--- 点 → 水平中线 → 上下分裂 → 侧栏左展开。
+local function open_geom(g, q)
+  local C = g.col + g.sw + 2 -- 主窗最终左缘
+  local R = g.row -- 最终顶行
+  local cx = C + (g.w + 2) / 2 -- 主窗最终中心 x（连续坐标）
+  local cy = R + (g.h + 2) / 2 -- 最终中心 y
+  local main, side
+  if q < OPEN_LINE then
+    local t = q / OPEN_LINE
+    local w = math.max(1, round(1 + (g.w - 1) * t))
+    main = { row = round(cy - 0.5), col = round(cx - w / 2), w = w, h = 1, border = "none" }
+  elseif q < OPEN_SIDE then
+    local t = (q - OPEN_LINE) / (OPEN_SIDE - OPEN_LINE)
+    local h = math.max(1, round(1 + (g.h - 1) * t))
+    local row0 = round(cy - 1.5) -- 加边框后的起始顶行
+    main = { row = round(row0 + (R - row0) * t), col = C, w = g.w, h = h, border = "rounded" }
+  else
+    local t = (q - OPEN_SIDE) / (1 - OPEN_SIDE)
+    local sw = math.max(1, round(1 + (g.sw - 1) * t))
+    main = { row = R, col = C, w = g.w, h = g.h, border = "rounded" }
+    side = { row = R, col = C - (sw + 2), w = sw, h = g.h, border = "rounded" }
+  end
+  return main, side
+end
+
+--- 关闭动画几何：q（1 = 完全展开，0 = 收成中心的点）
+--- 与 open_geom 严格镜像（时间反放）：侧栏折回 → 带边框收成一条线 → 化线为点。
+--- 相位分界与展开一致，保证逐帧可见、收尾不拖。
+local function close_geom(g, q)
+  local p = 1 - q
+  local C = g.col + g.sw + 2
+  local R = g.row
+  local cx = C + (g.w + 2) / 2
+  local cy = R + (g.h + 2) / 2
+  local line_row = round(cy - 0.5) -- 无边框"线"所在行（与展开起点相同）
+  local row0 = round(cy - 1.5) -- 带边框阶段的起始顶行（与展开衔接）
+  local main, side
+  if p < 1 - OPEN_SIDE then
+    -- 反放展开的第 3 相：侧栏折回
+    local t = p / (1 - OPEN_SIDE)
+    local sw = math.max(1, round(g.sw + (1 - g.sw) * t))
+    main = { row = R, col = C, w = g.w, h = g.h, border = "rounded" }
+    side = { row = R, col = C - (sw + 2), w = sw, h = g.h, border = "rounded" }
+  elseif p < 1 - OPEN_LINE then
+    -- 反放展开的第 2 相：上下合拢成一条线
+    local t = (p - (1 - OPEN_SIDE)) / (OPEN_SIDE - OPEN_LINE)
+    local h = math.max(1, round(g.h + (1 - g.h) * t))
+    main = { row = round(R + (row0 - R) * t), col = C, w = g.w, h = h, border = "rounded" }
+  else
+    -- 反放展开的第 1 相：线收成点
+    local t = (p - (1 - OPEN_LINE)) / OPEN_LINE
+    local w = math.max(1, round(g.w + (1 - g.w) * t))
+    main = { row = line_row, col = round(cx - w / 2), w = w, h = 1, border = "none" }
+  end
+  return main, side
+end
+
+--- 应用一对窗口几何；侧栏窗口在需要时创建、不需要时关闭
+local function apply_pair(mg, sg, title)
+  local p = panel.float
+  if is_win(p.win) and mg then
+    -- 注意：border=none 时不能带 title/title_pos，否则 nvim 整条 set_config 拒绝
+    local cfg = {
+      relative = "editor",
+      style = "minimal",
+      width = mg.w,
+      height = mg.h,
+      row = mg.row,
+      col = mg.col,
+      border = mg.border,
+    }
+    if mg.border ~= "none" and title then
+      cfg.title = " " .. title .. " "
+      cfg.title_pos = "center"
+    end
+    pcall(vim.api.nvim_win_set_config, p.win, cfg)
+  end
+  if sg then
+    if not is_win(p.side) then
+      p.side = vim.api.nvim_open_win(ensure_side_buf("float"), false, {
+        relative = "editor",
+        style = "minimal",
+        width = sg.w,
+        height = sg.h,
+        row = sg.row,
+        col = sg.col,
+        border = sg.border,
+        zindex = 45,
+      })
+      vim.w[p.side].nvkit_no_dim = true
+      vim.wo[p.side].winhighlight = ""
+      watch(p.side, "float")
+      M.refresh("float")
+    else
+      pcall(vim.api.nvim_win_set_config, p.side, {
+        relative = "editor",
+        style = "minimal",
+        width = sg.w,
+        height = sg.h,
+        row = sg.row,
+        col = sg.col,
+        border = sg.border,
+      })
+    end
+  elseif is_win(p.side) then
+    -- 不置 nil：若这次关闭失败，收尾的 close_all 还能兜底重试
+    pcall(vim.api.nvim_win_close, p.side, true)
+  end
+end
+
+local function apply_open_geom(g, q, title)
+  panel.float.q = q
+  local mg, sg = open_geom(g, q)
+  apply_pair(mg, sg, title)
+end
+
+local function apply_close_geom(g, q, title)
+  panel.float.q = q
+  local mg, sg = close_geom(g, q)
+  apply_pair(mg, sg, title)
+end
+
+--- 展开/折叠动画（q 从 0→1 或 1→0；mode 决定几何曲线）
+--- 按实际经过时间推进（ease-out cubic），每帧强制刷屏防重绘合并。
+local function animate(g, q_from, q_to, done, mode)
   slide_token.float = slide_token.float + 1
   local token = slide_token.float
-  local function step(i)
-    if token ~= slide_token.float then
-      return
-    end
-    local t = i / SLIDE_STEPS
-    local eased = 1 - (1 - t) * (1 - t)
-    set_float_wins(g, math.floor(row_from + (row_to - row_from) * eased + 0.5), title)
-    if i < SLIDE_STEPS then
-      vim.defer_fn(function()
-        step(i + 1)
-      end, SLIDE_MS)
-    elseif done then
-      done()
+  -- 运行时旋钮（调试/慢链路用）：:lua vim.g.nvkit_term_anim_tick = 32 后重按 tp 生效
+  local default_ms = mode == "close" and SLIDE_MS_CLOSE or SLIDE_MS
+  local ms_var = mode == "close" and vim.g.nvkit_term_anim_ms_close or vim.g.nvkit_term_anim_ms
+  local total_ms = tonumber(ms_var) or default_ms
+  local tick_ms = tonumber(vim.g.nvkit_term_anim_tick) or SLIDE_TICK
+  if tick_ms <= 0 then
+    tick_ms = SLIDE_TICK
+  end
+  if total_ms <= 0 then
+    total_ms = default_ms
+  end
+  local start = uv.hrtime()
+  local total = total_ms * 1e6
+  local total_frames = math.max(1, math.ceil(total_ms / tick_ms))
+  local frame = 0
+  local debug_frames = vim.g.nvkit_term_anim_debug and true or false
+  local timer = assert(uv.new_timer())
+  local finished = false
+  -- 调试日志（:lua vim.g.nvkit_term_anim_log = "/tmp/nvkit_anim.log" 后触发动画）
+  local log_path = vim.g.nvkit_term_anim_log
+  local logf = type(log_path) == "string" and log_path ~= "" and io.open(log_path, "a") or nil
+  local prev_tick
+  local function close_log()
+    if logf then
+      pcall(function()
+        logf:close()
+      end)
+      logf = nil
     end
   end
-  step(1)
+  local function finish()
+    if finished then
+      return
+    end
+    finished = true
+    close_log()
+    if timer then
+      if not timer:is_closing() then
+        timer:stop()
+        timer:close()
+      end
+      timer = nil
+    end
+  end
+  timer:start(0, tick_ms, function()
+    vim.schedule(function()
+      if token ~= slide_token.float then
+        return finish()
+      end
+      local now = uv.hrtime()
+      local t = math.min((now - start) / total, 1)
+      -- 展开 ease-out（快起慢收）；折叠线性推进，干脆利落
+      local eased = mode == "close" and t or (1 - (1 - t) ^ 3)
+      local q = q_from + (q_to - q_from) * eased
+      local cur = get(panel.float.cur)
+      local title = cur and name_of(cur) or nil
+      frame = frame + 1
+      if debug_frames then
+        title = ("帧 %d/%d"):format(math.min(frame, total_frames), total_frames)
+      end
+      local a = uv.hrtime()
+      local applier = mode == "close" and apply_close_geom or apply_open_geom
+      local ok_apply, apply_err = pcall(applier, g, q, title)
+      local b = uv.hrtime()
+      pcall(vim.api.nvim__redraw, { flush = true })
+      local c = uv.hrtime()
+      if logf then
+        pcall(function()
+          logf:write(
+            ("t=%.1f dt=%s set=%.2f flush=%.2f q=%.3f mode=%s%s\n"):format(
+              (now - start) / 1e6,
+              prev_tick and ("%.1f"):format((now - prev_tick) / 1e6) or "-",
+              (b - a) / 1e6,
+              (c - b) / 1e6,
+              q,
+              vim.api.nvim_get_mode().mode,
+              ok_apply and "" or (" APPLY_ERR:" .. tostring(apply_err))
+            )
+          )
+          logf:flush()
+        end)
+      end
+      prev_tick = now
+      if t >= 1 then
+        -- 容错收尾：先让最后一帧（点/全开）真实渲染一帧，再执行 done。
+        -- 否则"应用最后一帧 + 立即关窗"发生在同一个回调里，终端根本看不到收尾帧。
+        finish()
+        if done then
+          vim.defer_fn(function()
+            local ok_done, done_err = pcall(done)
+            pcall(vim.api.nvim__redraw, { flush = true })
+            if not ok_done and type(log_path) == "string" and log_path ~= "" then
+              pcall(function()
+                local f = io.open(log_path, "a")
+                if f then
+                  f:write("DONE_ERR:" .. tostring(done_err) .. "\n")
+                  f:close()
+                end
+              end)
+            end
+          end, tick_ms)
+        else
+          vim.schedule(function()
+            pcall(vim.api.nvim__redraw, { flush = true })
+          end)
+        end
+      end
+    end)
+  end)
 end
 
 --- 收起面板；soft=true 时不播放动画（终端被清空）
@@ -447,11 +679,11 @@ function M.hide(kind, soft)
       end
     end
     p.win, p.side, p.visible, p.closing = nil, nil, false, false
-    p.zoom_h, p.zoom_geom = nil, nil
+    p.zoom_h, p.zoom_geom, p.q = nil, nil, nil
   end
   if kind == "float" and not soft and in_current_tab(p.win) then
     local g = read_geom()
-    slide(g, M.name_of(p.cur), g.row, vim.o.lines, close_all)
+    animate(g, p.q or 1, 0, close_all, "close")
   else
     close_all()
   end
@@ -463,9 +695,22 @@ local function show_float()
     M.create("float")
   end
   if in_current_tab(p.win) then
-    vim.api.nvim_set_current_win(p.win)
-    vim.cmd("startinsert")
-    return
+    if p.closing then
+      -- 折叠动画进行中又被唤出：取消折叠、拆掉迷你框，重新走一遍展开动画
+      p.closing = false
+      slide_token.float = slide_token.float + 1
+      if is_win(p.win) then
+        pcall(vim.api.nvim_win_close, p.win, true)
+      end
+      if is_win(p.side) then
+        pcall(vim.api.nvim_win_close, p.side, true)
+      end
+      p.win, p.side = nil, nil
+    else
+      vim.api.nvim_set_current_win(p.win)
+      vim.cmd("startinsert")
+      return
+    end
   end
   if is_win(p.win) then
     pcall(vim.api.nvim_win_close, p.win, true)
@@ -476,37 +721,25 @@ local function show_float()
 
   local cur = get(p.cur) or M.terms("float")[1]
   p.cur = cur.id
+  p.closing = false
   local g = float_geom()
-  local start_row = vim.o.lines -- 从屏幕底部滑入
-  p.side = vim.api.nvim_open_win(ensure_side_buf("float"), false, {
-    relative = "editor",
-    style = "minimal",
-    width = g.sw,
-    height = g.h,
-    row = start_row,
-    col = g.col,
-    border = "rounded",
-    zindex = 45,
-  })
-  vim.w[p.side].nvkit_no_dim = true
-  vim.wo[p.side].winhighlight = ""
+  -- 从屏幕中心的 1×1 "点"开始（无边框），再展开成中线、上下分裂、侧栏左展
+  local mg = open_geom(g, 0)
+  p.side = nil
   p.win = vim.api.nvim_open_win(cur.buf, true, {
     relative = "editor",
     style = "minimal",
-    width = g.w,
-    height = g.h,
-    row = start_row,
-    col = g.col + g.sw + 2,
-    border = "rounded",
-    title = " " .. name_of(cur) .. " ",
-    title_pos = "center",
+    width = mg.w,
+    height = mg.h,
+    row = mg.row,
+    col = mg.col,
+    border = mg.border,
     zindex = 50,
   })
   p.visible = true
   watch(p.win, "float")
-  watch(p.side, "float")
   M.refresh("float")
-  slide(g, name_of(cur), start_row, g.row)
+  animate(g, 0, 1)
   vim.cmd("startinsert")
 end
 
@@ -579,7 +812,7 @@ function M.select(kind, id)
   vim.api.nvim_win_set_buf(p.win, t.buf)
   if kind == "float" then
     local g = read_geom()
-    set_float_wins(g, g.row, name_of(t))
+    set_float_wins(g, g.row, g.h, name_of(t))
   end
   M.refresh(kind)
   vim.api.nvim_set_current_win(p.win)
@@ -629,8 +862,11 @@ function M.toggle_zoom()
     end
     return
   end
+  -- 若展开/折叠动画还在跑，先取消，避免下一帧覆盖缩放几何
+  slide_token.float = slide_token.float + 1
+  p.q = nil
   if p.zoom_geom then
-    set_float_wins(p.zoom_geom, p.zoom_geom.row, title)
+    set_float_wins(p.zoom_geom, p.zoom_geom.row, p.zoom_geom.h, title)
     p.zoom_geom = nil
   else
     p.zoom_geom = read_geom()
@@ -639,7 +875,7 @@ function M.toggle_zoom()
     g.col = 0
     g.h = vim.o.lines - 2
     g.w = vim.o.columns - g.sw - 4
-    set_float_wins(g, 0, title)
+    set_float_wins(g, 0, g.h, title)
   end
 end
 

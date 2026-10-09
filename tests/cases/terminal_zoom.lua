@@ -32,7 +32,7 @@ lib.ok("再按还原高度", vim.api.nvim_win_get_height(term.main_win("bottom")
 
 -- 浮动：全屏
 term.summon("float")
-vim.wait(400)
+vim.wait(600)
 local before = vim.api.nvim_win_get_config(term.main_win("float"))
 term.toggle_zoom()
 vim.wait(200)
