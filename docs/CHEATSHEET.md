@@ -194,9 +194,16 @@ config.keys = {
   { key = "mapped:+", mods = "CTRL", action = act.DisableDefaultAssignment },
   { key = "mapped:+", mods = "CTRL|SHIFT", action = act.DisableDefaultAssignment },
 
-  -- 字号缩放彻底禁用（含 - / 0 / SUPER 系）
+  -- 字号缩放全禁用：放大(=/+)、缩小(-/_)、重置(0)
   { key = "-", mods = "CTRL", action = act.DisableDefaultAssignment },
+  { key = "-", mods = "CTRL|SHIFT", action = act.DisableDefaultAssignment },
+  { key = "mapped:-", mods = "CTRL", action = act.DisableDefaultAssignment },
+  { key = "mapped:_", mods = "CTRL", action = act.DisableDefaultAssignment },
+  { key = "mapped:_", mods = "CTRL|SHIFT", action = act.DisableDefaultAssignment },
   { key = "0", mods = "CTRL", action = act.DisableDefaultAssignment },
+  { key = "0", mods = "CTRL|SHIFT", action = act.DisableDefaultAssignment },
+
+  -- SUPER（Win 键）系同款
   { key = "=", mods = "SUPER", action = act.DisableDefaultAssignment },
   { key = "-", mods = "SUPER", action = act.DisableDefaultAssignment },
   { key = "0", mods = "SUPER", action = act.DisableDefaultAssignment },
