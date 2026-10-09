@@ -127,6 +127,8 @@ map({ "t", "n" }, "<C-S-=>", function() require("nvim-devkit.term").toggle_zoom(
 map({ "t", "n" }, "<C-S-+>", function() require("nvim-devkit.term").toggle_zoom() end, { desc = "终端面板最大化/还原" })
 map({ "t", "n" }, "<C-=>", function() require("nvim-devkit.term").toggle_zoom() end, { desc = "终端面板最大化/还原" })
 map({ "t", "n" }, "<C-+>", function() require("nvim-devkit.term").toggle_zoom() end, { desc = "终端面板最大化/还原" })
+-- 终端把 Ctrl+Shift+= 转发成 F13 时的接应（WezTerm 等占用该键的终端用，见 CHEATSHEET）
+map({ "t", "n" }, "<F13>", function() require("nvim-devkit.term").toggle_zoom() end, { desc = "终端面板最大化/还原（终端转发的 F13）" })
 
 -- ── 搜索跳转后保持上下文 ──────────────────────────────
 map("n", "n", "nzzzv", { desc = "下一个匹配（居中）" })

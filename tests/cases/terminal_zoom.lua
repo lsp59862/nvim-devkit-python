@@ -8,6 +8,9 @@ lib.ok("最大化键位映射存在（覆盖多种终端编码）",
     and vim.fn.maparg("<C-S-+>", "t", false, true).callback ~= nil
     and vim.fn.maparg("<C-=>", "n", false, true).callback ~= nil
     and vim.fn.maparg("<C-+>", "t", false, true).callback ~= nil)
+lib.ok("<F13> 转发键映射存在（WezTerm 等占用 Ctrl+Shift+= 的终端）",
+  vim.fn.maparg("<F13>", "t", false, true).callback ~= nil
+    and vim.fn.maparg("<F13>", "n", false, true).callback ~= nil)
 
 lib.reset()
 lib.ok("无终端时 toggle_zoom 为 no-op", pcall(term.toggle_zoom))
