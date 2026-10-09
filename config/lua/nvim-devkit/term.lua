@@ -447,6 +447,7 @@ function M.hide(kind, soft)
       end
     end
     p.win, p.side, p.visible, p.closing = nil, nil, false, false
+    p.zoom_h, p.zoom_geom = nil, nil
   end
   if kind == "float" and not soft and in_current_tab(p.win) then
     local g = read_geom()
@@ -606,6 +607,42 @@ function M.cycle(delta)
   M.select(kind, list[idx].id)
 end
 
+--- Ctrl+Shift+=：当前面板最大化 / 还原
+--- 底部 = 高度撑满（编辑器留最小空间，nvim 自动 clamp）；浮动 = 全屏
+function M.toggle_zoom()
+  local kind = M.current_kind()
+  if not kind then
+    return
+  end
+  local p = panel[kind]
+  if not in_current_tab(p.win) then
+    return
+  end
+  local title = M.name_of(p.cur)
+  if kind == "bottom" then
+    if p.zoom_h then
+      vim.api.nvim_win_set_height(p.win, p.zoom_h)
+      p.zoom_h = nil
+    else
+      p.zoom_h = vim.api.nvim_win_get_height(p.win)
+      vim.api.nvim_win_set_height(p.win, vim.o.lines)
+    end
+    return
+  end
+  if p.zoom_geom then
+    set_float_wins(p.zoom_geom, p.zoom_geom.row, title)
+    p.zoom_geom = nil
+  else
+    p.zoom_geom = read_geom()
+    local g = vim.deepcopy(p.zoom_geom)
+    g.row = 0
+    g.col = 0
+    g.h = vim.o.lines - 2
+    g.w = vim.o.columns - g.sw - 4
+    set_float_wins(g, 0, title)
+  end
+end
+
 --- <M-n>：新建一台与当前终端同类型的终端
 function M.new_like_current()
   local kind = M.current_kind() or "float"
@@ -705,6 +742,13 @@ function M.setup()
         return
       end
       local g = float_geom()
+      if p.zoom_geom then
+        -- 缩放状态下保持全屏
+        g.row = 0
+        g.col = 0
+        g.h = vim.o.lines - 2
+        g.w = vim.o.columns - g.sw - 4
+      end
       if is_win(p.side) then
         pcall(vim.api.nvim_win_set_config, p.side, {
           relative = "editor",

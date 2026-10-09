@@ -122,6 +122,11 @@ map("t", "<M-j>", function() require("nvim-devkit.term").cycle(1) end, { desc = 
 map("t", "<M-k>", function() require("nvim-devkit.term").cycle(-1) end, { desc = "上一个终端（列表向上）" })
 map("t", "<M-n>", function() require("nvim-devkit.term").new_like_current() end, { desc = "新建同类终端" })
 map("t", "<M-r>", function() require("nvim-devkit.term").rename_current() end, { desc = "重命名当前终端" })
+-- 最大化/还原当前终端面板（终端可能把 Ctrl+Shift+= 发成 <C-=> / <C-+> 等编码，一并覆盖）
+map({ "t", "n" }, "<C-S-=>", function() require("nvim-devkit.term").toggle_zoom() end, { desc = "终端面板最大化/还原" })
+map({ "t", "n" }, "<C-S-+>", function() require("nvim-devkit.term").toggle_zoom() end, { desc = "终端面板最大化/还原" })
+map({ "t", "n" }, "<C-=>", function() require("nvim-devkit.term").toggle_zoom() end, { desc = "终端面板最大化/还原" })
+map({ "t", "n" }, "<C-+>", function() require("nvim-devkit.term").toggle_zoom() end, { desc = "终端面板最大化/还原" })
 
 -- ── 搜索跳转后保持上下文 ──────────────────────────────
 map("n", "n", "nzzzv", { desc = "下一个匹配（居中）" })
