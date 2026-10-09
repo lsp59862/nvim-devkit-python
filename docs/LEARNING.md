@@ -227,7 +227,7 @@
 | 插入模式 | 补全（blink.cmp） | Enter 接受 · Tab/S-Tab 下/上一项 · Esc/C-e 取消预览 · C-y 接受 |
 | 插入模式 | 词级删除 | `C-w`/`C-BS` 删前词 · `C-Del` 删后词 · `C-u` 删到行首 |
 | 选择器（所有 picker） | `Alt+J` / `Alt+K` | 上下选择（不用先打字） |
-| 终端面板 | `Ctrl+Shift+=`（WezTerm 转发 `F13`） | 最大化 / 还原 |
+| 终端面板 | `Ctrl+Shift+=`（WezTerm 需先释放默认键，见速查卡） | 最大化 / 还原 |
 | `g` `z` `[` `]` `<C-w>` | 等 200ms 看 which-key 提示 | |
 
 ## 6. 内置资源

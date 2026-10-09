@@ -132,7 +132,7 @@
 - 管理：`<leader>tp` 浮动面板 · `<leader>tb` 底部面板（呼出/收起；没有终端时自动创建）· `<leader>tl` 列表（Enter 切换，`<C-d>` 杀进程）
 - 面板 = 侧边栏 + 终端区：侧边栏显示 shell 简名 + 创建序号（**稳定编号**，删除不重排；重命名后自定义名）并高亮当前，**鼠标点击 / `<CR>`** 切换；`q` 收起（进程不退出）
 - 终端内：`Alt+N` 新建同类 · `Alt+J` / `Alt+K` 按列表向下 / 向上循环 · `Alt+R` 重命名 · `<Esc><Esc>` 回普通模式；浮动面板从屏幕底部滑入 / 滑出（侧边栏圆角包边、当前项高亮）
-- 最大化：终端里 `Ctrl+Shift+=` 切换当前面板最大化 / 还原（底部撑满高度、浮窗全屏）；WezTerm 会占用该键调字号，需转发成 `F13`（见「故障排除」）
+- 最大化：终端里 `Ctrl+Shift+=` 切换当前面板最大化 / 还原（底部撑满高度、浮窗全屏）；WezTerm 会占用该键调字号，需先释放默认键（见「故障排除」）
 - 名字只出现在侧边栏/浮窗标题/`tl` 列表里，终端内容和底部分屏不再占用一行显示名字
 - 只做编辑/调试：任何终端都行
 - 要看图（matplotlib / Markdown 内嵌图 / PDF 图片模式）：
@@ -173,19 +173,40 @@
 | 某个插件报错 | `nvim-devkit --headless "+Lazy restore" +qa` 回锁定版本；再不行 `:Lazy! sync` |
 | 更新后坏了 | `git -C ~/nvim-devkit log --oneline -5` → `git checkout <旧提交> -- config/` → 重跑 `install.sh --update` |
 | 分屏分不清 / 压暗不够 | 增强已默认开启：`:NvkitSplits` 开关；调强度 `:lua local t=require("nvim-devkit.theme"); t.options.fg_fade=0.7; t.options.bg_fade=0.5; t.dim_inactive(false); t.dim_inactive(true)`（数值 0~1，越大越明显） |
-| WezTerm 按 `Ctrl+Shift+=` 变放大页面 | WezTerm 默认占用该键调字号，按键到不了 nvim；按下方说明转发成 `F13` 即可 |
+| WezTerm 按 `Ctrl+Shift+=` 变放大页面 | WezTerm 默认占用该键调字号，按键到不了 nvim；按下方说明释放默认键（或转发 `F13`） |
 
 **WezTerm 用户：让 `Ctrl+Shift+=` 生效**
 
+WezTerm 默认把 `Ctrl+=`（含 `Ctrl+Shift+=`）绑成缩放字号。把下面整段贴进 WezTerm 配置（Windows：`%USERPROFILE%\.wezterm.lua`；Linux/macOS：`~/.wezterm.lua` 或 `~/.config/wezterm/wezterm.lua`），保存即热加载，**重启 nvim** 生效：
+
 ```lua
--- ~/.wezterm.lua
+local wezterm = require 'wezterm' -- 注意：没有全局 wezterm，必须 require 后使用
+local act = wezterm.action
+local config = wezterm.config_builder()
+
+-- 让 nvim 的 kitty 键盘协议协商生效（WezTerm 默认关闭）
+config.enable_kitty_keyboard = true
+
 config.keys = {
-  { key = "=", mods = "CTRL|SHIFT", action = wezterm.action.SendKey { key = "F13" } },
-  { key = "+", mods = "CTRL", action = wezterm.action.SendKey { key = "F13" } },
+  -- 释放 Ctrl+= / Ctrl+Shift+= → 原样传给 nvim（终端面板最大化/还原）
+  { key = "=", mods = "CTRL", action = act.DisableDefaultAssignment },
+  { key = "=", mods = "CTRL|SHIFT", action = act.DisableDefaultAssignment },
+  { key = "mapped:+", mods = "CTRL", action = act.DisableDefaultAssignment },
+
+  -- 字号缩放挪到 Ctrl+Alt
+  { key = "=", mods = "CTRL|ALT", action = act.IncreaseFontSize },
+  { key = "-", mods = "CTRL|ALT", action = act.DecreaseFontSize },
+  { key = "0", mods = "CTRL|ALT", action = act.ResetFontSize },
 }
+
+return config
 ```
 
-devkit 已把 `<F13>` 接为"终端面板最大化/还原"（`Ctrl+=` 调字号不受影响）。
+验证：nvim 里 `<C-v>` 再按 `Ctrl+Shift+=` 应显示 `<C-S-=>`；`wezterm show-keys --lua` 可查看生效绑定。
+配置文件已有其它内容时**不要整份覆盖**：只把 `enable_kitty_keyboard` 与 `config.keys` 两块合并进去，并确保文件顶部有 `local wezterm = require 'wezterm'`。
+
+回退（键盘布局/协议异常时；仍是同一个物理键）：把 `CTRL|SHIFT` 那行换成
+`{ key = "=", mods = "CTRL|SHIFT", action = act.SendKey { key = "F13" } }`（devkit 已接 `<F13>`）。
 
 ---
 
