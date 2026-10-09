@@ -132,7 +132,7 @@
 - 管理：`<leader>tp` 浮动面板 · `<leader>tb` 底部面板（呼出/收起；没有终端时自动创建）· `<leader>tl` 列表（Enter 切换，`<C-d>` 杀进程）
 - 面板 = 侧边栏 + 终端区：侧边栏显示 shell 简名 + 创建序号（**稳定编号**，删除不重排；重命名后自定义名）并高亮当前，**鼠标点击 / `<CR>`** 切换；`q` 收起（进程不退出）
 - 终端内：`Alt+N` 新建同类 · `Alt+J` / `Alt+K` 按列表向下 / 向上循环 · `Alt+R` 重命名 · `<Esc><Esc>` 回普通模式；浮动面板从屏幕底部滑入 / 滑出（侧边栏圆角包边、当前项高亮）
-- 最大化：终端里 `Ctrl+Shift+=` 切换当前面板最大化 / 还原（底部撑满高度、浮窗全屏）
+- 最大化：终端里 `Ctrl+Shift+=` 切换当前面板最大化 / 还原（底部撑满高度、浮窗全屏）；WezTerm 会占用该键调字号，需转发成 `F13`（见「故障排除」）
 - 名字只出现在侧边栏/浮窗标题/`tl` 列表里，终端内容和底部分屏不再占用一行显示名字
 - 只做编辑/调试：任何终端都行
 - 要看图（matplotlib / Markdown 内嵌图 / PDF 图片模式）：
@@ -173,6 +173,19 @@
 | 某个插件报错 | `nvim-devkit --headless "+Lazy restore" +qa` 回锁定版本；再不行 `:Lazy! sync` |
 | 更新后坏了 | `git -C ~/nvim-devkit log --oneline -5` → `git checkout <旧提交> -- config/` → 重跑 `install.sh --update` |
 | 分屏分不清 / 压暗不够 | 增强已默认开启：`:NvkitSplits` 开关；调强度 `:lua local t=require("nvim-devkit.theme"); t.options.fg_fade=0.7; t.options.bg_fade=0.5; t.dim_inactive(false); t.dim_inactive(true)`（数值 0~1，越大越明显） |
+| WezTerm 按 `Ctrl+Shift+=` 变放大页面 | WezTerm 默认占用该键调字号，按键到不了 nvim；按下方说明转发成 `F13` 即可 |
+
+**WezTerm 用户：让 `Ctrl+Shift+=` 生效**
+
+```lua
+-- ~/.wezterm.lua
+config.keys = {
+  { key = "=", mods = "CTRL|SHIFT", action = wezterm.action.SendKey { key = "F13" } },
+  { key = "+", mods = "CTRL", action = wezterm.action.SendKey { key = "F13" } },
+}
+```
+
+devkit 已把 `<F13>` 接为"终端面板最大化/还原"（`Ctrl+=` 调字号不受影响）。
 
 ---
 
