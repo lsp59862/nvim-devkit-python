@@ -57,10 +57,8 @@ lib.ok("放大后放置的是 magick 裁剪产物（cache 内 PNG）",
 
 local box_w, box_h = vim.o.columns - 2, vim.o.lines - 2
 for _, win in ipairs(vim.fn.win_findbuf(buf)) do
-  if vim.api.nvim_win_get_config(win).relative == "" then
-    box_w = math.min(box_w, vim.api.nvim_win_get_width(win) - 2)
-    box_h = math.min(box_h, vim.api.nvim_win_get_height(win) - 2)
-  end
+  box_w = math.min(box_w, vim.api.nvim_win_get_width(win) - 2)
+  box_h = math.min(box_h, vim.api.nvim_win_get_height(win) - 2)
 end
 local loc = st.placement:state().loc
 lib.ok("放置尺寸不超过可视框（上下/左右留边距）",
@@ -68,7 +66,7 @@ lib.ok("放置尺寸不超过可视框（上下/左右留边距）",
   ("loc=%dx%d box=%dx%d"):format(loc.width, loc.height, box_w, box_h))
 do
   local term = Snacks.image.terminal.size()
-  local okd, dims = pcall(Snacks.util.dim, zoomed)
+  local okd, dims = pcall(Snacks.image.util.dim, zoomed)
   if okd and dims then
     local iw = dims.width / math.max(1, term.cell_width)
     local ih = dims.height / math.max(1, term.cell_height)
@@ -108,6 +106,31 @@ lib.ok("旧 placement 随后被清理", old_p.closed == true, ("old_closed=%s"):
 reset()
 vim.wait(300)
 lib.ok("复位回适应窗口并放置原图", st.zoom == 1 and placed() == orig,
+  ("zoom=%s placed=%s"):format(tostring(st.zoom), tostring(placed())))
+
+-- 缩小到比适应窗口更小（0.75 / 0.5 档，走 magick -resize）
+minus()
+vim.wait(300)
+lib.ok("缩小到 0.75（生成缩小产物）",
+  math.abs(st.zoom - 0.75) < 0.001 and placed() ~= orig and placed():find(cache, 1, true) ~= nil
+    and vim.fn.filereadable(placed()) == 1,
+  ("zoom=%s placed=%s"):format(tostring(st.zoom), tostring(placed())))
+do
+  local ok0, d0 = pcall(Snacks.image.util.dim, orig)
+  local okz, dz = pcall(Snacks.image.util.dim, placed())
+  lib.ok("缩小产物像素尺寸更小", ok0 and okz and dz.width < d0.width and dz.height < d0.height,
+    ("orig=%dx%d scaled=%dx%d"):format(ok0 and d0.width or 0, ok0 and d0.height or 0,
+      okz and dz.width or 0, okz and dz.height or 0))
+end
+minus()
+vim.wait(300)
+lib.ok("缩小到 0.5", math.abs(st.zoom - 0.5) < 0.001, "zoom=" .. tostring(st.zoom))
+minus()
+vim.wait(100)
+lib.ok("0.5 为最小档（不再缩小）", math.abs(st.zoom - 0.5) < 0.001, "zoom=" .. tostring(st.zoom))
+reset()
+vim.wait(300)
+lib.ok("再次复位回适应窗口", st.zoom == 1 and placed() == orig,
   ("zoom=%s placed=%s"):format(tostring(st.zoom), tostring(placed())))
 
 vim.cmd("silent! %bwipeout!")

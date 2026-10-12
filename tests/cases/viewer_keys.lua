@@ -1,4 +1,4 @@
--- 查看器：缩放裁剪几何、PDF 页数解析、ft=image 键位安装
+-- 查看器：裁剪/缩小纯函数、PDF 页数解析、ft=image 预览浮窗与键位
 local lib = dofile((vim.env.NVIM_DEVKIT_TESTS or vim.fn.fnamemodify(debug.getinfo(1, "S").source:sub(2), ":p:h:h")) .. "/lib.lua")
 local viewer = require("nvim-devkit.viewer")
 local pdf = require("nvim-devkit.pdf")
@@ -15,16 +15,39 @@ lib.ok("平移越界被夹紧", clamped.x == 500 and clamped.y == 0, vim.inspect
 local cmd = viewer._crop_cmd("magick", "in.png", "out.png", half)
 lib.ok("裁剪命令正确", cmd[1] == "magick" and cmd[3] == "-crop" and cmd[4] == "500x250+250+125",
   vim.inspect(cmd))
+local scmd = viewer._scale_cmd("magick", "in.png", "out.png", 50)
+lib.ok("缩小命令正确", scmd[1] == "magick" and scmd[3] == "-resize" and scmd[4] == "50%",
+  vim.inspect(scmd))
 
 -- PDF 页数解析（pdfinfo 输出）
 lib.eq("pdfinfo Pages 解析", pdf.parse_pages("Title: x\nPages:          12\nPage size: 595 x 842 pts"), 12)
 lib.eq("pdfinfo 无 Pages 行", pdf.parse_pages("Author: y"), nil)
 
--- ft=image 的 buffer 安装查看器键位
+-- 图片：预览浮窗 + 键位 + q 关闭
 lib.reset()
-local img = lib.fixture("viewer_probe.png", { "not-a-real-png" })
+local png_b64 = "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg=="
+local img = lib.dir() .. "/viewer_probe.png"
+do
+  local f = assert(io.open(img, "wb"))
+  f:write(vim.base64.decode(png_b64))
+  f:close()
+end
 vim.cmd("edit " .. vim.fn.fnameescape(img))
-vim.bo.filetype = "image" -- 触发 FileType autocmd（snacks 已挂载后的状态）
+vim.bo.filetype = "image" -- 触发 FileType autocmd（真实路径由 snacks 设置）
+local imgbuf = vim.api.nvim_get_current_buf()
+local st = viewer.state(imgbuf)
+lib.ok("预览浮窗已打开（当前窗口为浮窗）",
+  vim.api.nvim_win_get_config(0).relative == "editor", vim.inspect(vim.api.nvim_win_get_config(0).relative))
+lib.ok("预览浮窗为 90% 居中",
+  st ~= nil
+    and vim.api.nvim_win_get_width(0) == math.max(20, math.floor(vim.o.columns * 0.9))
+    and vim.api.nvim_win_get_height(0) == math.max(6, math.floor(vim.o.lines * 0.9)),
+  st and ("%dx%d"):format(vim.api.nvim_win_get_width(0), vim.api.nvim_win_get_height(0)) or "no-state")
+lib.ok("原窗口保留（home 有效且不再显示图片）",
+  st ~= nil and st.home ~= nil and vim.api.nvim_win_is_valid(st.home)
+    and vim.api.nvim_win_get_buf(st.home) ~= imgbuf,
+  st and ("home=%s buf=%s"):format(tostring(st.home), tostring(st.home and vim.api.nvim_win_get_buf(st.home))) or "no-state")
+
 local keys = {}
 for _, m in ipairs(vim.api.nvim_buf_get_keymap(0, "n")) do
   keys[m.lhs] = true
@@ -35,7 +58,18 @@ lib.ok("图片键位：平移 h/j/k/l", keys["h"] and keys["j"] and keys["k"] an
 lib.ok("图片键位：滚轮缩放", keys["<ScrollWheelUp>"] and keys["<ScrollWheelDown>"])
 lib.ok("图片无翻页键", not keys["]p"])
 
--- 另一 buffer 的 pdf 场景：翻页 + rt 切文本
+local q = vim.fn.maparg("q", "n", false, true).callback
+if q then
+  q()
+  vim.wait(200)
+  lib.ok("q 关闭预览并删除 buffer",
+    not vim.api.nvim_buf_is_valid(imgbuf) and #vim.fn.win_findbuf(imgbuf) == 0,
+    ("valid=%s wins=%d"):format(tostring(vim.api.nvim_buf_is_valid(imgbuf)), #vim.fn.win_findbuf(imgbuf)))
+else
+  lib.ok("q 键位存在", false, "callback=nil")
+end
+
+-- 另一 buffer 的 pdf 场景：翻页 + rt 切文本（不入渲染路径）
 lib.reset()
 local pdfbuf = vim.api.nvim_create_buf(true, false)
 vim.api.nvim_buf_set_name(pdfbuf, "/tmp/nvim-devkit-tests/viewer_probe.pdf")
