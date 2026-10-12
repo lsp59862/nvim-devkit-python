@@ -100,7 +100,7 @@ cd ~/nvim-devkit && ./install.sh --update
 
 | 场景 | 方案 |
 | --- | --- |
-| 文件浏览 / 搜索 | snacks.explorer + snacks.picker（40+ 数据源，取代 netrw/telescope/neo-tree；所有列表 `Alt+J`/`Alt+K` 上下选择） |
+| 文件浏览 / 搜索 | snacks.explorer + snacks.picker（40+ 数据源，取代 netrw/telescope/neo-tree；所有列表 `Alt+J`/`Alt+K` 上下选择；文件树/查找默认显示所有文件，不被 `.gitignore` 过滤、点文件可见） |
 | 代码高亮 | nvim-treesitter（main 分支，parser 本地编译） |
 | 补全 | blink.cmp（锁 1.x 稳定版，rust 匹配器不可用时自动降级 Lua） |
 | LSP | basedpyright + ruff + lua_ls + bashls + jsonls + yamlls（自动识别 conda/venv） |
@@ -108,7 +108,8 @@ cd ~/nvim-devkit && ./install.sh --update
 | Jupyter | molten-nvim + jupytext（`.py` 里跑 cell、输出内嵌；内核 `devkit-python`） |
 | Markdown | render-markdown（标题/表格/公式内联渲染） |
 | CSV | csvview（表格线、粘性表头、分隔符自动识别） |
-| PDF | 文本双栏提取（任何终端）+ Kitty 终端下的图片模式（`<leader>rt`） |
+| PDF | 文本双栏提取（任何终端）+ Kitty 终端下默认按页看图，`]p/[p` 翻页、`+/-` 缩放、`h/j/k/l` 平移、`<leader>rt` 切文本 |
+| 图片 | png/jpg/webp 等打开即显示；`+/-`/滚轮缩放、`h/j/k/l` 平移、`0` 适应窗口（Kitty/WezTerm；JPG 转换需 ImageMagick） |
 | Git | gitsigns + lazygit 浮窗 + gitbrowse |
 | AI | opencode.nvim（`<leader>oa` 提问并注入当前上下文，编辑 diff 审阅） |
 | 终端 | VS Code 式面板：浮动（`<leader>tp`）/ 底部（`<leader>tb`）/ 列表（`<leader>tl`）；侧边栏（圆角包边、当前高亮）显示名字、鼠标点击切换；终端内 `Alt+N` 新建同类、`Alt+J`/`Alt+K` 循环、`Alt+R` 重命名、`Ctrl+Shift+=` 最大化/还原（WezTerm 需先释放默认键，见速查卡）；浮动面板从中心“点→线→分裂”展开、镜像折叠（时长可调） |

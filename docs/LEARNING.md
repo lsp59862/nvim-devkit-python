@@ -148,7 +148,8 @@
 ### Day 11 — Markdown / CSV / PDF（文献与数据）
 - Markdown：打开即内联渲染；`<leader>sk` 里有 `:RenderMarkdown toggle` 可切原始视图
 - CSV：打开即表格视图（`CsvViewToggle` 手动开关，粘性表头方便对列）
-- PDF：直接 `:e paper.pdf` 自动转文本（分页标记）；`]p / [p` 翻页；Kitty 终端下 `<leader>rt` 切图片模式
+- PDF：直接 `:e paper.pdf`；Kitty/WezTerm 下默认按页看图（`]p/[p`、滚轮翻页；`+/-` 缩放；`h/j/k/l` 平移；`0` 适应窗口），`<leader>rt` 与文本模式互切；其他终端自动转文本
+- 图片：`png/jpg/webp` 打开即显示，缩放/平移键位同上
 - 练习：用 PDF 阅读 + `<leader>sw` 搜索 + 摘录到 Markdown 笔记
 
 ### Day 12 — opencode 深度协作
@@ -221,7 +222,7 @@
 | `<leader>o*` | opencode | `oa` `os` `ot` `op` `of` |
 | `<leader>t*` | 终端面板 | `tp` 浮动 · `tb` 底部 · `tl` 列表 | `M-n` 新建 · `M-j`/`M-k` 循环 · `M-r` 重命名 |
 | `<leader>q*` | 会话 | `qs` `ql` `qd` `qe` |
-| `<leader>r*` | 渲染 | `rt`（PDF 图片模式） |
+| `<leader>r*` | 渲染 | `rt`（PDF 图片/文本互切） |
 | `Ctrl-g` | **恐慌重置** | 任何时候按 |
 | `s` / `S` | Flash 跳转 / 选节点 | |
 | 插入模式 | 补全（blink.cmp） | Enter 接受 · Tab/S-Tab 下/上一项 · Esc/C-e 取消预览 · C-y 接受 |

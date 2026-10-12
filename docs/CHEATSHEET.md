@@ -65,7 +65,7 @@
 
 | 前缀 | 主题 | 高频键 |
 | --- | --- | --- |
-| `<leader>e` / `<leader><space>` | 文件树 / 智能查找 | `e` `ff` `fg` `fr` `fp` |
+| `<leader>e` / `<leader><space>` | 文件树 / 智能查找（默认显示所有文件：不被 .gitignore 过滤、点文件可见；树内 `Alt+i`/`Alt+h` 反向切换） | `e` `ff` `fg` `fr` `fp` |
 | `<leader>/` `<leader>s*` | 搜索 | `/` `sw`（光标词）`sd`（诊断）`sk`（键位）`sh`（帮助） |
 | `<leader>u*` | 撤销/恢复 | `uu` 撤销树 · `uE` 回到 N 时间前 · `uL` 前进 · `ur` 重载 |
 | `<leader>b*` | Buffer | `bd` 关文件+窗口 · `bo` 只留当前 |
@@ -77,7 +77,7 @@
 | `<leader>o*` | opencode | `oa` 提问（带上下文）· `os` 动作面板 · `ot` 面板开关 · `of` 整文件 |
 | `<leader>t*` | 终端面板 | `tp` 浮动 · `tb` 底部 · `tl` 列表（各带侧边栏） |
 | `<leader>q*` | 会话 / 主页 | `qs` 恢复本目录 · `ql` 恢复最近 · `qd` 停自动保存 · `qe` 重新开启 · `qh` 回启动页 |
-| `<leader>r*` | 渲染 | `rt` PDF 图片模式（Kitty 终端） |
+| `<leader>r*` | 渲染 | `rt` PDF 图片/文本模式互切（Kitty 终端） |
 
 ### 高频单键
 
@@ -126,7 +126,8 @@
 ### 读文献 / 数据
 - Markdown：打开即渲染（标题/表格/公式）；`:RenderMarkdown toggle` 切原始
 - CSV：打开即表格视图（粘性表头），`:CsvViewToggle` 开关
-- PDF：`:e paper.pdf` 自动转文本，`]p/[p` 翻页；Kitty 终端下 `<leader>rt` 切图片模式
+- PDF：Kitty/WezTerm 下 `:e paper.pdf` **默认按页看图**（`]p/[p` 或滚轮翻页，`+/-` 缩放，`h/j/k/l` 平移，`0` 适应窗口，`<leader>rt` 切文本）；其他终端自动转文本，`]p/[p` 翻页
+- 图片（png/jpg/webp…）：打开即显示；`+/-` 或滚轮缩放，`h/j/k/l` 平移，`0` 适应窗口，`q` 关闭（JPG 等转换需 ImageMagick，`./install.sh --with-magick`）
 
 ### 终端速记
 - 管理：`<leader>tp` 浮动面板 · `<leader>tb` 底部面板（呼出/收起；没有终端时自动创建）· `<leader>tl` 列表（Enter 切换，`<C-d>` 杀进程）

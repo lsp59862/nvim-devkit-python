@@ -26,7 +26,7 @@ cd ~/nvim-devkit
 - nvim 可执行文件查找顺序：`NVIM_DEVKIT_BIN` 环境变量 → `~/.local/share/nvim-devkit/nvim/bin/nvim` → PATH 中的 `nvim`
 - 失败时完整日志留在 `/tmp/nvim-devkit-tests/log-<用例>.txt`
 
-## 覆盖范围（32 个用例 / 141 项断言）
+## 覆盖范围（34 个用例 / 162 项断言）
 
 | 用例 | 覆盖行为 |
 | --- | --- |
@@ -56,6 +56,8 @@ cd ~/nvim-devkit
 | `terminal_list` | 列表区分 `[浮]/[底]/[面板]` · 名字为简名（无绝对路径）· 所有 picker 的 `Alt+J`/`Alt+K` 选择键已配置 · picker 参数（format/confirm/`<C-d>` 杀）· 确认后 picker 必须收起（浮窗/底部两条路径，防残留）· 新键位 `tp/tb/tl` 且旧 `tt/tn` 已移除 |
 | `opencode_keys` | opencode 插件 1.x 公开 API 存在性（`ask/select/prompt/operator`，无 `toggle`）· `<leader>ot` 映射存在（n/t）· stub 验证调用 `snacks.terminal.toggle("opencode --port", 右侧面板)` |
 | `dashboard_keys` | 启动页按键契约：`r` = 恢复会话（persistence.load）· `q` = `:q`（防回退到 snacks 默认的 `<cmd>bd`）· buffer 内映射存在 |
+| `explorer_all_files` | 文件树默认显示所有文件：被 `.gitignore` 忽略的 `result/`（ignored 标记加载后仍可见）· 点文件 · 普通文件；`explorer` 与 `files` 数据源默认 `hidden+ignored` |
+| `viewer_keys` | 查看器：缩放裁剪几何（适应窗口/2x 中心裁剪/平移夹紧）· 裁剪命令构造 · pdfinfo 页数解析 · `ft=image` 上安装图片键位（q/±/0/滚轮/hjkl，无翻页）与 PDF 键位（`]p/[p`、滚轮翻页、`<leader>rt` 切文本） |
 | `winbuf_exit_dashboard` | 退出类：dashboard 上 `:q` → 退出 nvim |
 | `winbuf_exit_command` | 退出类：`:exit` 有无未保存修改都直接退出 |
 
@@ -78,6 +80,8 @@ cd ~/nvim-devkit
 | 官方教程 | `:Tutor` 可用（runtime 的 tutor 插件未被 lazy 禁用） |
 | 终端面板 | `<leader>tp`/`tb` 呼出/收起（没有终端时自动创建）· 侧边栏圆角包边、显示简名 + **稳定编号**（删除不重排）、当前项高亮、鼠标/`<CR>` 切换 · 名字只在侧边栏/浮窗标题/列表出现（底部无名字栏）· `Alt+N` 同类新建 · `Alt+R` 重命名 · `Alt+J`/`Alt+K` 按列表向下/向上且只能同类循环 · `:q`/`q` 收起不杀进程 · 浮动面板从中心“点→线→分裂”展开、关闭镜像折叠（时长 420/300ms 可调） |
 | 选择器导航 | 所有 snacks.picker 列表：`Alt+J`/`Alt+K` 上下选择（输入框内也生效，不必先打字） |
+| 文件树 / 文件查找 | 默认显示所有文件：`explorer`/`files` 数据源 `hidden+ignored`（不被 `.gitignore` 过滤、不隐藏点文件）；树内仍可用 `Alt+i`/`Alt+h` 临时反向切换 |
+| 图片 / PDF 查看器 | PDF 在 Kitty 协议终端下默认按页看图（`]p/[p`、滚轮、`PageUp/Down` 翻页；`+/-`/滚轮缩放；`h/j/k/l` 平移；`0` 适应窗口；`<leader>rt` 与文本互切），其他终端默认文本模式；图片打开即显示并支持同一套缩放/平移键位 |
 | 终端最大化 | 终端内（含终端窗口的普通模式）`Ctrl+Shift+=` 切换最大化/还原；底部撑满高度、浮窗全屏；再按还原 |
 
 ## 新增用例
