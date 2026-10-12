@@ -114,6 +114,36 @@ lib.ok("逃生阀：滚轮不改变缩放、不触发渲染", wst.zoom == 1 and 
   ("zoom=%s gen=%d→%d"):format(tostring(wst.zoom), gen0, wst.gen))
 vim.g.nvkit_viewer_wheel = nil
 
+-- 环境缺 ImageMagick 时的降级：普通放置（左上角）、缩放不生效且不重建 placement
+lib.reset()
+local old_path = vim.env.PATH
+vim.env.PATH = "/nonexistent"
+do
+  local f = assert(io.open(img, "wb"))
+  f:write(vim.base64.decode(png_b64))
+  f:close()
+end
+vim.cmd("edit " .. vim.fn.fnameescape(img))
+vim.bo.filetype = "image"
+local dbuf = vim.api.nvim_get_current_buf()
+local dst = viewer.state(dbuf)
+vim.wait(300)
+lib.ok("无 magick 时退化为普通放置（不生成画布、直接放源图）",
+  dst.canvas_file == nil and dst.placement ~= nil and dst.placement.img ~= nil
+    and dst.placement.img.file == vim.api.nvim_buf_get_name(dbuf),
+  ("canvas=%s placed=%s"):format(tostring(dst.canvas_file),
+    tostring(dst.placement and dst.placement.img and dst.placement.img.file)))
+local dp = dst.placement
+local dplus = vim.fn.maparg("+", "n", false, true).callback
+if dplus then
+  dplus()
+end
+vim.wait(200)
+lib.ok("无 magick 时缩放不生效、不重建 placement（仅提示）",
+  dst.zoom == 1 and dst.placement == dp,
+  ("zoom=%s same=%s"):format(tostring(dst.zoom), tostring(dst.placement == dp)))
+vim.env.PATH = old_path
+
 -- 另一 buffer 的 pdf 场景：翻页 + rt 切文本
 lib.reset()
 local pdfbuf = vim.api.nvim_create_buf(true, false)
@@ -130,7 +160,18 @@ lib.ok("PDF 图片模式：<leader>rt 切文本", pkeys[" rt"] == true)
 
 -- 模拟 Kitty 协议 + ImageMagick：PDF 默认按页看图（BufReadCmd 放行给 snacks.image）
 vim.env.NVIM_DEVKIT_IMAGE_BACKEND = "kitty"
-vim.fn.writefile({ "#!/bin/sh", "exit 0" }, lib.dir() .. "/magick")
+-- 假 magick：支持两种产物约定——`-write <file>`（snacks 转换）与"最后参数"（查看器画布），
+-- 都拷贝一张真实 PNG；`.info` 结尾则写可解析的 identify 结果。避免"假成功但不产出"
+-- 导致后续异步读取失败刷错误日志
+vim.fn.writefile({
+  "#!/bin/sh",
+  'out=""; w=0; last=""',
+  'for a; do last="$a"; if [ "$w" = 1 ]; then out="$a"; w=0; fi; [ "$a" = "-write" ] && w=1; done',
+  'case "$last" in *.info) printf "PNG 1x1 72x72\n" > "$last" ;; esac',
+  '[ -n "$out" ] || out="$last"',
+  ('case "$out" in *.info) ;; *) cp %s "$out" ;; esac'):format(img),
+  "exit 0",
+}, lib.dir() .. "/magick")
 vim.fn.setfperm(lib.dir() .. "/magick", "rwxr-xr-x")
 vim.env.PATH = lib.dir() .. ":" .. vim.env.PATH
 require("snacks.image").config.force = true

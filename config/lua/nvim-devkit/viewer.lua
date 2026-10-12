@@ -255,7 +255,13 @@ local function render(buf, st)
   local okgeom, W, H, pw, ph = pcall(canvas_geom, buf)
   local cmd = magick()
   if not (okgeom and W and cmd) then
-    place(buf, st, base) -- 无 ImageMagick / 无单元格像素信息：退化普通放置
+    -- 无 ImageMagick / 无单元格像素信息：退化为普通放置（左上角、不可缩放）。
+    -- 同一源图已在展示时直接返回，避免每次按键重建 placement（无意义 a=p 累积）
+    local cur = st.placement
+    if cur and not cur.closed and cur.img and cur.img.file == base then
+      return
+    end
+    place(buf, st, base)
     if okgeom and W then
       st.plan = M._plan(dims.width, dims.height, pw, ph, st.zoom, st.px, st.py)
       st.canvas_key = plan_key(base, st.plan)
@@ -334,6 +340,20 @@ local function cancel_wheel(st)
   st.wheel_token = (st.wheel_token or 0) + 1
 end
 
+--- 缩放前置环境检查：不满足时给出可操作提示并返回 true
+local function zoom_blocked(buf)
+  if not magick() then
+    notify("缩放需要 ImageMagick（可用 ./install.sh --with-magick 安装；" ..
+      "或用 ~/.local/bin/nvim-devkit 启动以带上工具 PATH）", vim.log.levels.WARN)
+    return true
+  end
+  if not (canvas_geom(buf)) then
+    notify("缩放不可用：终端未上报单元格像素尺寸（SSH 场景建议用 wezterm ssh / kitty）", vim.log.levels.WARN)
+    return true
+  end
+  return false
+end
+
 -- 窗口事件（浮窗开关/分屏/切换）静默多久后合并一次重定位。
 -- WezTerm ≤ 未合并 PR #8035 的版本里，重定位（a=p）与滚动 interplay 会重复累积图片
 -- 附件（wezterm#7953）→ quad 爆炸崩溃；因此不做"每次事件都重定位"，而是静默后一次。
@@ -385,8 +405,7 @@ local function set_zoom(buf, st, zoom)
 end
 
 local function zoom_step(buf, st, delta)
-  if not magick() then
-    notify("缩放需要 ImageMagick（可用 ./install.sh --with-magick 安装）", vim.log.levels.WARN)
+  if zoom_blocked(buf) then
     return
   end
   local idx = ladder_index(st.zoom)
@@ -409,8 +428,7 @@ end
 local WHEEL_MS = 140
 
 local function wheel_zoom(buf, st, delta)
-  if not magick() then
-    notify("缩放需要 ImageMagick（可用 ./install.sh --with-magick 安装）", vim.log.levels.WARN)
+  if zoom_blocked(buf) then
     return
   end
   local idx = ladder_index(st.zoom)
@@ -616,7 +634,20 @@ function M.attach(buf)
       end, wheel and "缩放已禁用（vim.g.nvkit_viewer_wheel=0）" or "放大")
     end
   end
-  pcall(render, buf, state(buf))
+  -- 源文件不存在时不渲染（转换必然失败，只会在后台刷错误）
+  local name = vim.api.nvim_buf_get_name(buf)
+  if name ~= "" and vim.fn.filereadable(name) == 1 then
+    pcall(render, buf, state(buf))
+  end
+  if not vim.g.nvkit_viewer_env_warned then
+    vim.g.nvkit_viewer_env_warned = true
+    if not magick() then
+      notify("未安装 ImageMagick：图片按原始布局显示、缩放暂不可用（./install.sh --with-magick 可安装）",
+        vim.log.levels.WARN)
+    elseif not (canvas_geom(buf)) then
+      notify("终端未上报单元格像素尺寸：缩放暂不可用（SSH 场景建议用 wezterm ssh）", vim.log.levels.WARN)
+    end
+  end
 end
 
 return M
