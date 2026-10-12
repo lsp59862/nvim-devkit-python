@@ -27,6 +27,20 @@ local function notify(msg, level)
   vim.notify("查看器: " .. msg, level or vim.log.levels.INFO)
 end
 
+--- 查看器自己的 place() 调用（用于区分 snacks 自带挂载，见 setup 的包装）
+local placing = false
+
+--- SSH(remote) 下 snacks 逐 4KB 发图、每块强制 sleep(1ms)（≈250KB/s 上限）：
+--- 查看器触发图片发送时临时把 uv.sleep 变为空操作，LAN 场景下快一到两个数量级
+local function without_sleep(fn)
+  local uv = vim.uv or vim.loop
+  local orig = uv.sleep
+  uv.sleep = function() end
+  local ret = { pcall(fn) }
+  uv.sleep = orig
+  return unpack(ret)
+end
+
 --- 等比缩放渲染方案（纯函数，供测试）
 --- 整图以 s = s0*zoom 的缩放绘制在 canvas 上，画布即窗口像素尺寸；
 --- 返回原图取景裁剪、缩放目标、在画布上的落点（全部整数，供 magick 使用）
@@ -96,6 +110,8 @@ function M._render_cmd(cmd, src, out, plan)
     "-geometry", ("%+d%+d"):format(plan.offset.x, plan.offset.y),
     "-composite",
     "-strip",
+    -- PNG 编码等级 1：编码时间约减半（体积 +8%；SSH 发送已不受 snacks 的 1ms/4KB 限速，划算）
+    "-define", "png:compression-level=1",
     out,
   }
 end
@@ -189,14 +205,49 @@ end
 --- 放置图片：先创建新 placement、稍后再撤旧 placement（避免"先清后画"的空白帧闪烁）。
 --- 旧 placement 的自动更新会立即停用：WezTerm #7953 中每次 a=p 都会重复累积图片附件
 --- （quad 数爆炸 → 崩溃），必须把重定位次数压到最低。
-local function place(buf, st, file)
+--- 关闭一个旧 placement：立刻停其自动更新；延迟用正确 id 显式删除后 close
+local function close_placement(old)
+  -- 立刻停掉旧 placement 的自动更新（防止其继续发 a=p 加剧 WezTerm #7953 的附件累积）
+  pcall(vim.api.nvim_del_augroup_by_id, old.augroup)
+  vim.defer_fn(function()
+    -- snacks 的 Image:del 把 ipairs 下标当 placement id 发送（永远发 p=1），
+    -- WezTerm 按 (image_id, placement_id) 匹配时会找不到真实 placement → 单元格里的
+    -- 图片附件不会被摘下（逐次累积成 quad 爆炸）。这里用正确 id 显式删除一次。
+    local ok_term, terminal = pcall(require, "snacks.image.terminal")
+    if ok_term and terminal and old.img then
+      pcall(terminal.request, { a = "d", d = "i", i = old.img.id, p = old.id })
+    end
+    pcall(function()
+      old:close()
+    end)
+  end, 60)
+end
+
+--- 清理"别的代码"为本 buffer 创建的源图 placement（snacks 自带挂载可能晚于我们）
+local function sweep_foreign(buf, st)
+  if not (vim.api.nvim_buf_is_valid(buf) and states[buf] == st) then
+    return
+  end
+  local ok_img, img = pcall(require("snacks.image").image.new, source_file(st))
+  if ok_img and img and img.placements then
+    for _, p in pairs(img.placements) do
+      if p.buf == buf and p ~= st.placement and not p.closed then
+        close_placement(p)
+      end
+    end
+  end
+end
+
+local function place_impl(buf, st, file)
   local snacks = require("snacks.image")
   local olds = {}
   if st.placement then
     olds[#olds + 1] = st.placement
   end
-  -- 首次替换时，把 snacks 初次挂载的 placement（仅本 buffer）也一起纳入延迟清理
-  local ok_img, img = pcall(snacks.image.new, source_file(st))
+  -- 把 snacks 初次挂载的 placement（仅本 buffer）也一起纳入延迟清理
+  local ok_img, img = without_sleep(function()
+    return snacks.image.new(source_file(st))
+  end)
   if ok_img and img and img.placements then
     for _, p in pairs(img.placements) do
       if p.buf == buf then
@@ -206,41 +257,46 @@ local function place(buf, st, file)
   end
 
   st.image_hidden = false
-  st.placement = snacks.placement.new(buf, file, {
-    conceal = true,
-    -- 不挂 snacks 的 auto_resize（它在任何 WinNew/WinClosed/WinEnter 都会重定位发 a=p）；
-    -- 改由本模块"静默合并"策略触发（schedule_replace），把 a=p 收敛到用户停手后一次
-    auto_resize = false,
-    on_update_pre = function(p)
-      if p.closed then
-        return
-      end
-      local W, H = canvas_geom(buf)
-      if W then
-        p.opts.width, p.opts.height = W, H
-      end
-      -- 画布缺失（窗口尺寸/缩放/平移变化或转换完成）时补烘焙
-      M._ensure_canvas(buf, st, p)
-    end,
-  })
+  local ok_p, newp = without_sleep(function()
+    return snacks.placement.new(buf, file, {
+      conceal = true,
+      -- 不挂 snacks 的 auto_resize（它在任何 WinNew/WinClosed/WinEnter 都会重定位发 a=p）；
+      -- 改由本模块"静默合并"策略触发（schedule_replace），把 a=p 收敛到用户停手后一次
+      auto_resize = false,
+      on_update_pre = function(p)
+        if p.closed then
+          return
+        end
+        local W, H = canvas_geom(buf)
+        if W then
+          p.opts.width, p.opts.height = W, H
+        end
+        -- 画布缺失（窗口尺寸/缩放/平移变化或转换完成）时补烘焙
+        M._ensure_canvas(buf, st, p)
+      end,
+    })
+  end)
+  if not ok_p then
+    error(newp)
+  end
+  st.placement = newp
 
   for _, old in ipairs(olds) do
     if old ~= st.placement then
-      -- 立刻停掉旧 placement 的自动更新（防止其继续发 a=p 加剧 WezTerm #7953 的附件累积）
-      pcall(vim.api.nvim_del_augroup_by_id, old.augroup)
-      vim.defer_fn(function()
-        -- snacks 的 Image:del 把 ipairs 下标当 placement id 发送（永远发 p=1），
-        -- WezTerm 按 (image_id, placement_id) 匹配时会找不到真实 placement → 单元格里的
-        -- 图片附件不会被摘下（逐次累积成 quad 爆炸）。这里用正确 id 显式删除一次。
-        local ok_term, terminal = pcall(require, "snacks.image.terminal")
-        if ok_term and terminal and old.img then
-          pcall(terminal.request, { a = "d", d = "i", i = old.img.id, p = old.id })
-        end
-        pcall(function()
-          old:close()
-        end)
-      end, 60)
+      close_placement(old)
     end
+  end
+end
+
+--- 放置图片：先创建新 placement、稍后再撤旧 placement（避免"先清后画"的空白帧闪烁）。
+--- 旧 placement 的自动更新会立即停用：WezTerm #7953 中每次 a=p 都会重复累积图片附件
+--- （quad 数爆炸 → 崩溃），必须把重定位次数压到最低。
+local function place(buf, st, file)
+  placing = true
+  local ok, err = pcall(place_impl, buf, st, file)
+  placing = false
+  if not ok then
+    error(err)
   end
 end
 
@@ -253,7 +309,9 @@ local function render(buf, st)
   st.replace_token = (st.replace_token or 0) + 1 -- 新渲染接管，作废挂起的静默重定位
   local gen = st.gen
   local snacks = require("snacks.image")
-  local ok_img, img = pcall(snacks.image.new, source_file(st))
+  local ok_img, img = without_sleep(function()
+    return snacks.image.new(source_file(st))
+  end)
   local base = ok_img and img and img.file or nil
   if type(base) ~= "string" then
     return
@@ -557,6 +615,21 @@ local function setup()
     return
   end
   did_setup = true
+  -- 查看器接管的 buffer：阻止 snacks 自带 buf 挂载再画一张源图
+  -- （它晚于我们的画布创建、贴左上角盖满屏幕——"一开始霸屏"的元凶）
+  pcall(function()
+    local pmod = require("snacks.image.placement")
+    if type(pmod.new) == "function" and not pmod.__nvkit_patched then
+      pmod.__nvkit_patched = true
+      local orig_new = pmod.new
+      pmod.new = function(buf, src, opts)
+        if not placing and type(buf) == "number" and vim.b[buf] and vim.b[buf].nvkit_viewer_keys then
+          return -- 由查看器接管
+        end
+        return orig_new(buf, src, opts)
+      end
+    end
+  end)
   vim.api.nvim_create_autocmd("VimResized", {
     group = vim.api.nvim_create_augroup("nvim_devkit_viewer", { clear = true }),
     callback = function()
@@ -715,6 +788,12 @@ function M.attach(buf)
   local name = vim.api.nvim_buf_get_name(buf)
   if name ~= "" and vim.fn.filereadable(name) == 1 then
     pcall(render, buf, state(buf))
+    -- 安全网：snacks 自带的源图挂载可能晚于我们（异步终端探测），稍后清扫几次
+    for _, delay in ipairs({ 400, 1500, 3000 }) do
+      vim.defer_fn(function()
+        pcall(sweep_foreign, buf, state(buf))
+      end, delay)
+    end
   end
   if not vim.g.nvkit_viewer_env_warned then
     vim.g.nvkit_viewer_env_warned = true

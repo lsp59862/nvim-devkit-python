@@ -70,6 +70,21 @@ lib.ok("未额外创建窗口", #vim.api.nvim_tabpage_list_wins(0) == wins_befor
   ("wins=%d before=%d"):format(#vim.api.nvim_tabpage_list_wins(0), wins_before))
 lib.ok("查看器状态建立", st ~= nil, vim.inspect(st and { zoom = st.zoom, mode = st.mode }))
 
+-- 防"一开始霸屏"：snacks 自带的源图挂载不应残留（它晚于画布创建且贴左上角盖满）
+if vim.fn.executable("magick") == 1 then
+  vim.wait(2200)
+  local srcimg = require("snacks.image").image.new(vim.api.nvim_buf_get_name(imgbuf))
+  local foreign = 0
+  for _, p in pairs(srcimg.placements or {}) do
+    if p.buf == imgbuf and not p.closed then
+      foreign = foreign + 1
+    end
+  end
+  lib.ok("初始不留 snacks 源图 placement（防霸屏）", foreign == 0, "foreign=" .. tostring(foreign))
+else
+  lib.ok("初始不留 snacks 源图 placement（需要 ImageMagick，跳过）", true, "optional")
+end
+
 local keys = {}
 for _, m in ipairs(vim.api.nvim_buf_get_keymap(0, "n")) do
   keys[m.lhs] = true

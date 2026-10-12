@@ -87,8 +87,10 @@ local reset = vim.fn.maparg("0", "n", false, true).callback
 lib.ok("缩放/平移/复位键位存在", plus ~= nil and minus ~= nil and pan_j ~= nil and reset ~= nil)
 
 -- 放大：仍是窗口画布，且等比（x/y 缩放系数一致）
+local orig_sleep = vim.uv.sleep
 plus()
 vim.wait(300)
+lib.ok("传输加速包装不残留（uv.sleep 已还原）", vim.uv.sleep == orig_sleep)
 lib.ok("放大后倍数生效", st.zoom > 1.0001, "zoom=" .. tostring(st.zoom))
 do
   local dw, dh = file_dims(placed())
