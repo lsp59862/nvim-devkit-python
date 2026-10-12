@@ -375,17 +375,6 @@ local function ladder_index(zoom)
   return idx
 end
 
-local function zoom_notify(zoom)
-  local pct = math.floor(zoom * 100 + 0.5)
-  if zoom == 1 then
-    notify("适应窗口")
-  elseif zoom < 1 then
-    notify(("缩小 %d%%"):format(pct))
-  else
-    notify(("缩放 %d%%（h/j/k/l 平移，0 适应窗口）"):format(pct))
-  end
-end
-
 local function set_zoom(buf, st, zoom)
   cancel_wheel(st)
   st.zoom = zoom
@@ -393,7 +382,6 @@ local function set_zoom(buf, st, zoom)
     st.px, st.py = 0.5, 0.5
   end
   render(buf, st)
-  zoom_notify(zoom)
 end
 
 local function zoom_step(buf, st, delta)
@@ -441,7 +429,6 @@ local function wheel_zoom(buf, st, delta)
       return -- 已被后续滚轮或显式操作取代
     end
     render(buf, st)
-    zoom_notify(st.zoom)
   end, WHEEL_MS)
 end
 

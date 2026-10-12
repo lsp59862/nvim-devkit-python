@@ -193,7 +193,7 @@ do
   vim.wait(120)
   vim.notify = orig_notify
   lib.ok("停下后合并渲染一次", done and st.gen == gen0 + 1, ("gen=%d→%d"):format(gen0, st.gen))
-  lib.ok("滚轮合并只通知一次", notifications == 1, "notifications=" .. tostring(notifications))
+  lib.ok("图片变化不再通知", notifications == 0, "notifications=" .. tostring(notifications))
 end
 
 -- 窗口事件不再即时重定位；静默 ~0.8s 后合并一次（WezTerm #7953 防护）
