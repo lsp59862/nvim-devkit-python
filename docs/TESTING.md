@@ -26,7 +26,7 @@ cd ~/nvim-devkit
 - nvim 可执行文件查找顺序：`NVIM_DEVKIT_BIN` 环境变量 → `~/.local/share/nvim-devkit/nvim/bin/nvim` → PATH 中的 `nvim`
 - 失败时完整日志留在 `/tmp/nvim-devkit-tests/log-<用例>.txt`
 
-## 覆盖范围（34 个用例 / 162 项断言）
+## 覆盖范围（35 个用例 / 171 项断言）
 
 | 用例 | 覆盖行为 |
 | --- | --- |
@@ -58,6 +58,7 @@ cd ~/nvim-devkit
 | `dashboard_keys` | 启动页按键契约：`r` = 恢复会话（persistence.load）· `q` = `:q`（防回退到 snacks 默认的 `<cmd>bd`）· buffer 内映射存在 |
 | `explorer_all_files` | 文件树默认显示所有文件：被 `.gitignore` 忽略的 `result/`（ignored 标记加载后仍可见）· 点文件 · 普通文件；`explorer` 与 `files` 数据源默认 `hidden+ignored` |
 | `viewer_keys` | 查看器：缩放裁剪几何（适应窗口/2x 中心裁剪/平移夹紧）· 裁剪命令构造 · pdfinfo 页数解析 · `ft=image` 上安装图片键位（q/±/0/滚轮/hjkl，无翻页）与 PDF 键位（`]p/[p`、滚轮翻页、`<leader>rt` 切文本） |
+| `viewer_zoom` | 查看器真实缩放路径：打开真实 PNG → `+` 产生 magick 裁剪产物并替换放置 · 平移改变取景中心 · `0` 复位回原图（回归：曾因 `snacks.image.image` 双层索引崩溃、状态存 vim.b 读回是副本导致断言失效；无 ImageMagick 时跳过） |
 | `winbuf_exit_dashboard` | 退出类：dashboard 上 `:q` → 退出 nvim |
 | `winbuf_exit_command` | 退出类：`:exit` 有无未保存修改都直接退出 |
 
