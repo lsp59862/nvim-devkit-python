@@ -587,48 +587,6 @@ function M.attach(buf)
   if not vim.b[buf].nvkit_viewer_keys then
     vim.b[buf].nvkit_viewer_keys = true
     local st = state(buf)
-    local aug = vim.api.nvim_create_augroup("nvim_devkit_viewer_replace_" .. buf, { clear = true })
-    vim.api.nvim_create_autocmd("BufWipeout", {
-      buffer = buf,
-      once = true,
-      callback = function()
-        states[buf] = nil
-        pcall(vim.api.nvim_del_augroup_by_id, aug)
-      end,
-    })
-    -- 自己接管重定位触发（auto_resize=false）：窗口事件静默合并为一次 a=p
-    vim.api.nvim_create_autocmd({ "BufWinEnter", "BufEnter" }, {
-      group = aug,
-      buffer = buf,
-      callback = function()
-        schedule_replace(buf, st)
-      end,
-    })
-    vim.api.nvim_create_autocmd({ "WinEnter", "WinClosed", "WinNew", "WinResized" }, {
-      group = aug,
-      callback = function()
-        -- 延后一个 tick：WinClosed 触发时被关的浮窗可能仍在窗口列表里
-        vim.schedule(function()
-          if vim.api.nvim_buf_is_valid(buf) and states[buf] == st and #vim.fn.win_findbuf(buf) > 0 then
-            sync_visibility(buf, st)
-          end
-        end)
-      end,
-    })
-    -- 命令行（noice 会渲染成浮窗）打开时隐藏图片；离开后在界面清空时恢复
-    vim.api.nvim_create_autocmd("CmdlineEnter", {
-      group = aug,
-      callback = function()
-        cancel_replace(st)
-        hide_image(st)
-      end,
-    })
-    vim.api.nvim_create_autocmd("CmdlineLeave", {
-      group = aug,
-      callback = function()
-        sync_visibility(buf, st)
-      end,
-    })
     fetch_pages(buf, st)
 
     local function map(lhs, fn, desc)
@@ -696,6 +654,53 @@ function M.attach(buf)
         wheel_zoom(buf, st, 1)
       end, wheel and "缩放已禁用（vim.g.nvkit_viewer_wheel=0）" or "放大")
     end
+
+    -- 事件钩子（重定位/浮窗避让）放在键位之后且整体 pcall：
+    -- 任何环境差异都不影响最基本的查看键位可用
+    pcall(function()
+      local aug = vim.api.nvim_create_augroup("nvim_devkit_viewer_replace_" .. buf, { clear = true })
+      vim.api.nvim_create_autocmd("BufWipeout", {
+        buffer = buf,
+        once = true,
+        callback = function()
+          states[buf] = nil
+          pcall(vim.api.nvim_del_augroup_by_id, aug)
+        end,
+      })
+      -- 自己接管重定位触发（auto_resize=false）：窗口事件静默合并为一次 a=p
+      vim.api.nvim_create_autocmd({ "BufWinEnter", "BufEnter" }, {
+        group = aug,
+        buffer = buf,
+        callback = function()
+          schedule_replace(buf, st)
+        end,
+      })
+      vim.api.nvim_create_autocmd({ "WinEnter", "WinClosed", "WinNew", "WinResized" }, {
+        group = aug,
+        callback = function()
+          -- 延后一个 tick：WinClosed 触发时被关的浮窗可能仍在窗口列表里
+          vim.schedule(function()
+            if vim.api.nvim_buf_is_valid(buf) and states[buf] == st and #vim.fn.win_findbuf(buf) > 0 then
+              sync_visibility(buf, st)
+            end
+          end)
+        end,
+      })
+      -- 命令行（noice 会渲染成浮窗）打开时隐藏图片；离开后在界面清空时恢复
+      vim.api.nvim_create_autocmd("CmdlineEnter", {
+        group = aug,
+        callback = function()
+          cancel_replace(st)
+          hide_image(st)
+        end,
+      })
+      vim.api.nvim_create_autocmd("CmdlineLeave", {
+        group = aug,
+        callback = function()
+          sync_visibility(buf, st)
+        end,
+      })
+    end)
   end
   -- 源文件不存在时不渲染（转换必然失败，只会在后台刷错误）
   local name = vim.api.nvim_buf_get_name(buf)
