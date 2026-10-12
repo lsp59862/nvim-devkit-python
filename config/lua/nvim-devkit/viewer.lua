@@ -124,6 +124,7 @@ local function state(buf)
     canvas_file = nil, -- 最近一次画布文件
     wheel_token = 0, -- 滚轮合并渲染令牌（显式操作会使其失效）
     replace_token = 0, -- 窗口事件重定位令牌（静默合并，显式操作/渲染会使其失效）
+    image_hidden = false, -- 因 UI 浮窗（命令行/消息/通知）暂时隐藏中
   }
   states[buf] = st
   return st
@@ -191,6 +192,7 @@ local function place(buf, st, file)
     end
   end
 
+  st.image_hidden = false
   st.placement = snacks.placement.new(buf, file, {
     conceal = true,
     -- 不挂 snacks 的 auto_resize（它在任何 WinNew/WinClosed/WinEnter 都会重定位发 a=p）；
@@ -359,6 +361,37 @@ end
 -- 附件（wezterm#7953）→ quad 爆炸崩溃；因此不做"每次事件都重定位"，而是静默后一次。
 local REPLACE_MS = 800
 
+--- 作废挂起的静默重定位（显式操作/新渲染/关闭接管）
+local function cancel_replace(st)
+  st.replace_token = (st.replace_token or 0) + 1
+end
+
+--- 当前是否有 UI 浮窗（noice 的命令行/消息、通知、picker、终端面板等）
+--- 终端把图片画在文字上层，全窗画布会盖住这些浮窗 → 有浮窗时需暂时隐藏图片
+local function ui_floats_visible()
+  for _, win in ipairs(vim.api.nvim_list_wins()) do
+    if vim.api.nvim_win_get_config(win).relative ~= "" then
+      return true
+    end
+  end
+  return false
+end
+
+--- 暂时隐藏图片：真正发删除清空单元格附件（fallback 路径下 snacks 的 hide() 不生效）
+--- 幂等：浮窗事件风暴时不重复发 a=d
+local function hide_image(st)
+  if st.image_hidden then
+    return
+  end
+  local p = st.placement
+  if p and not p.closed then
+    st.image_hidden = true
+    pcall(function()
+      p:del()
+    end)
+  end
+end
+
 --- 静默合并重定位：窗口事件落定后对当前画布重新放置一次（仅一次 a=p）
 local function schedule_replace(buf, st)
   st.replace_token = (st.replace_token or 0) + 1
@@ -371,7 +404,11 @@ local function schedule_replace(buf, st)
     if not (p and not p.closed and p:ready()) or #vim.fn.win_findbuf(buf) == 0 then
       return
     end
+    if ui_floats_visible() then
+      return -- 界面仍有浮窗（消息/通知/picker）：保持隐藏，等 WinClosed 再恢复
+    end
     -- snacks 的 update 在状态未变时直接 return（不发 a=p）；这里清掉缓存强制重贴一次
+    st.image_hidden = false
     p._state = nil
     pcall(function()
       p:update()
@@ -379,10 +416,19 @@ local function schedule_replace(buf, st)
   end, REPLACE_MS)
 end
 
---- 作废挂起的静默重定位（显式操作/新渲染/关闭接管）
-local function cancel_replace(st)
-  st.replace_token = (st.replace_token or 0) + 1
+--- UI 浮窗出现则隐藏图片；界面清空后静默合并恢复
+local function sync_visibility(buf, st)
+  if not (vim.api.nvim_buf_is_valid(buf) and states[buf] == st) then
+    return
+  end
+  if ui_floats_visible() then
+    cancel_replace(st)
+    hide_image(st)
+  else
+    schedule_replace(buf, st)
+  end
 end
+
 
 --- 阶梯档位下标（最接近当前 zoom 的档）
 local function ladder_index(zoom)
@@ -561,9 +607,26 @@ function M.attach(buf)
     vim.api.nvim_create_autocmd({ "WinEnter", "WinClosed", "WinNew", "WinResized" }, {
       group = aug,
       callback = function()
-        if vim.api.nvim_buf_is_valid(buf) and #vim.fn.win_findbuf(buf) > 0 then
-          schedule_replace(buf, st)
-        end
+        -- 延后一个 tick：WinClosed 触发时被关的浮窗可能仍在窗口列表里
+        vim.schedule(function()
+          if vim.api.nvim_buf_is_valid(buf) and states[buf] == st and #vim.fn.win_findbuf(buf) > 0 then
+            sync_visibility(buf, st)
+          end
+        end)
+      end,
+    })
+    -- 命令行（noice 会渲染成浮窗）打开时隐藏图片；离开后在界面清空时恢复
+    vim.api.nvim_create_autocmd("CmdlineEnter", {
+      group = aug,
+      callback = function()
+        cancel_replace(st)
+        hide_image(st)
+      end,
+    })
+    vim.api.nvim_create_autocmd("CmdlineLeave", {
+      group = aug,
+      callback = function()
+        sync_visibility(buf, st)
       end,
     })
     fetch_pages(buf, st)

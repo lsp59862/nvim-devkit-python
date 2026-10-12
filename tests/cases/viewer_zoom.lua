@@ -200,11 +200,15 @@ end
 do
   reset()
   vim.wait(300)
-  local ap = 0
+  local ap, ad = 0, 0
   local orig_req = Snacks.image.terminal.request
   Snacks.image.terminal.request = function(opts)
-    if type(opts) == "table" and opts.a == "p" then
-      ap = ap + 1
+    if type(opts) == "table" then
+      if opts.a == "p" then
+        ap = ap + 1
+      elseif opts.a == "d" then
+        ad = ad + 1
+      end
     end
     return orig_req(opts)
   end
@@ -215,15 +219,57 @@ do
   vim.wait(300)
   local fbuf = vim.api.nvim_create_buf(false, true)
   local win = vim.api.nvim_open_win(fbuf, false, { relative = "editor", width = 10, height = 3, row = 1, col = 1 })
-  vim.wait(150)
-  lib.ok("窗口事件不即时重定位（不再每次事件发 a=p）", ap == 0, "ap=" .. tostring(ap))
+  vim.wait(200)
+  lib.ok("浮窗出现时图片自动隐藏（不再每次事件发 a=p）", ap == 0 and ad >= 1,
+    ("ap=%d ad=%d"):format(ap, ad))
   vim.api.nvim_win_close(win, true)
   vim.wait(1400)
   Snacks.image.terminal.request = orig_req
-  lib.ok("静默后合并重定位一次", ap == 1,
-    ("ap=%d token=%s valid=%s wins=%d closed=%s"):format(ap, tostring(st.replace_token),
-      tostring(vim.api.nvim_buf_is_valid(buf)), #vim.fn.win_findbuf(buf),
-      tostring(st.placement and st.placement.closed)))
+  do
+    local nf, names = 0, {}
+    for _, w in ipairs(vim.api.nvim_list_wins()) do
+      local c = vim.api.nvim_win_get_config(w)
+      if c.relative ~= "" then
+        nf = nf + 1
+        names[#names + 1] = ("%d:%s"):format(w, vim.api.nvim_buf_get_name(vim.api.nvim_win_get_buf(w)):sub(-24))
+      end
+    end
+    lib.ok("浮窗关闭后静默合并重定位一次", ap == 1,
+      ("ap=%d token=%s valid=%s wins=%d closed=%s floats=%d[%s]"):format(ap, tostring(st.replace_token),
+        tostring(vim.api.nvim_buf_is_valid(buf)), #vim.fn.win_findbuf(buf),
+        tostring(st.placement and st.placement.closed), nf, table.concat(names, ",")))
+  end
+end
+
+-- 命令行浮窗（noice）打开时图片自动隐藏，界面清空后恢复
+do
+  reset()
+  vim.wait(300)
+  pcall(function()
+    require("snacks.notifier").hide()
+  end)
+  vim.wait(300)
+  local ap, ad = 0, 0
+  local orig_req = Snacks.image.terminal.request
+  Snacks.image.terminal.request = function(opts)
+    if type(opts) == "table" then
+      if opts.a == "p" then
+        ap = ap + 1
+      elseif opts.a == "d" then
+        ad = ad + 1
+      end
+    end
+    return orig_req(opts)
+  end
+  vim.api.nvim_exec_autocmds("CmdlineEnter", {})
+  vim.wait(150)
+  lib.ok("打开命令行时图片自动隐藏", ad >= 1, "ad=" .. tostring(ad))
+  vim.api.nvim_exec_autocmds("CmdlineLeave", {})
+  local done = vim.wait(2000, function()
+    return ap >= 1
+  end, 50)
+  Snacks.image.terminal.request = orig_req
+  lib.ok("离开命令行且界面清空后图片恢复", done and ap >= 1, ("ap=%d ad=%d"):format(ap, ad))
 end
 
 vim.cmd("silent! %bwipeout!")
