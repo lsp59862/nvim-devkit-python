@@ -137,6 +137,12 @@ return {
       picker = {
         enabled = true,
         ui_select = true,
+        -- 文件树 / 文件查找默认显示所有文件：不被 .gitignore 过滤、不隐藏点文件
+        -- （树内仍可按 Alt+i / Alt+h 临时反向切换；grep 保持默认，避免搜进 .git 等大目录）
+        sources = {
+          explorer = { hidden = true, ignored = true },
+          files = { hidden = true, ignored = true },
+        },
         -- 全局：所有选择器都能用 Alt+J/K 上下选择（输入框里也不用先打字）
         win = {
           input = {

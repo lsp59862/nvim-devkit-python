@@ -58,7 +58,8 @@ local function set_pdf_keymaps(buf, path)
   end, "切换图片模式")
 end
 
-local function image_supported()
+--- 图片来源可用性（Kitty 协议终端 + ImageMagick）
+function M.image_supported()
   local caps = require("nvim-devkit.caps")
   if caps.effective_backend() ~= "kitty" then
     return false
@@ -82,7 +83,7 @@ function M.open(path)
   vim.bo[buf].filetype = "markdown"
   pcall(vim.api.nvim_buf_set_name, buf, ("%s [text]"):format(path))
 
-  local hint = image_supported() and "  |  <leader>rt 图片模式" or ""
+  local hint = M.image_supported() and "  |  <leader>rt 图片模式" or ""
   vim.api.nvim_buf_set_lines(buf, 0, -1, false, {
     ("# %s"):format(title),
     "",
@@ -123,7 +124,7 @@ end
 
 --- 图片模式：交给 snacks.image（需 Kitty 协议终端 + ImageMagick）
 function M.toggle_image(path)
-  if not image_supported() then
+  if not M.image_supported() then
     vim.notify(
       "当前终端不支持图片渲染（需要 kitty/ghostty/wezterm + ImageMagick），继续使用文本模式",
       vim.log.levels.WARN
@@ -133,7 +134,44 @@ function M.toggle_image(path)
   vim.g.nvkit_pdf_raw = true
   vim.cmd("edit " .. vim.fn.fnameescape(path))
   vim.g.nvkit_pdf_raw = false
-  vim.notify("图片模式：j/k 翻页，q 关闭（若空白说明该终端未启用图形协议穿透）", vim.log.levels.INFO)
+  vim.notify("图片模式：]p/[p 翻页 · 滚轮翻页 · +/- 缩放 · h/j/k/l 平移 · 0 适应窗口 · q 关闭", vim.log.levels.INFO)
+end
+
+--- 图片模式默认开局时的提示（仅支持时提示一次）
+function M.image_hint()
+  vim.notify("PDF 图片模式：]p/[p 或滚轮翻页 · +/- 缩放 · h/j/k/l 平移 · 0 适应窗口 · <leader>rt 切文本", vim.log.levels.INFO)
+end
+
+--- 解析 pdfinfo 输出中的页数（纯函数，供测试）
+function M.parse_pages(text)
+  return tonumber((text or ""):match("Pages:%s*(%d+)"))
+end
+
+--- 异步获取 PDF 页数：pdfinfo → venv python（pymupdf/pypdf）；取不到则回调 nil
+function M.count_pages(path, cb)
+  if vim.fn.executable("pdfinfo") == 1 then
+    vim.system({ "pdfinfo", path }, { text = true }, function(obj)
+      local n = obj.code == 0 and M.parse_pages(obj.stdout) or nil
+      vim.schedule(function()
+        cb(n)
+      end)
+    end)
+    return
+  end
+  local script = repo_root() .. "/scripts/pdf_pages.py"
+  local py = venv_python()
+  if py == "" or vim.fn.filereadable(script) == 0 then
+    vim.schedule(function()
+      cb(nil)
+    end)
+    return
+  end
+  vim.system({ py, script, path }, { text = true }, function(obj)
+    local n = obj.code == 0 and tonumber(vim.trim(obj.stdout or "")) or nil
+    vim.schedule(function()
+      cb(n)
+    end)
+  end)
 end
 
 return M

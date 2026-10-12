@@ -108,6 +108,8 @@ run_case opencode_keys 0
 run_case dashboard_keys 0
 run_case tutor 0
 run_case completion_keys 0
+run_case explorer_all_files 0
+run_case viewer_keys 0
 run_case winbuf_exit_dashboard 1
 run_case winbuf_exit_command 1
 

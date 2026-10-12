@@ -69,7 +69,7 @@ vim.api.nvim_create_autocmd("FileType", {
   end,
 })
 
--- PDF 拦截：转文本阅读（BufReadCmd 在读取二进制前接管）
+-- PDF 拦截：Kitty 协议终端默认按页看图（snacks.image 接管），否则转文本阅读
 vim.api.nvim_create_autocmd("BufReadCmd", {
   group = aug,
   pattern = "*.pdf",
@@ -77,6 +77,20 @@ vim.api.nvim_create_autocmd("BufReadCmd", {
     if vim.g.nvkit_pdf_raw then
       return
     end
-    require("nvim-devkit.pdf").open(args.file)
+    local pdf = require("nvim-devkit.pdf")
+    if pdf.image_supported() then
+      pdf.image_hint() -- 让 snacks.image 的 BufReadCmd 渲染；本 handler 直接放行
+      return
+    end
+    pdf.open(args.file)
+  end,
+})
+
+-- 图片 / PDF 图片模式的查看器键位（ft=image 由 snacks.image 设置）
+vim.api.nvim_create_autocmd("FileType", {
+  group = aug,
+  pattern = "image",
+  callback = function(args)
+    require("nvim-devkit.viewer").attach(args.buf)
   end,
 })
