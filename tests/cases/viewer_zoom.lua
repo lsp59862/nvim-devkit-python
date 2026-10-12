@@ -109,6 +109,11 @@ local old_p = st.placement
 plus()
 lib.ok("换图时旧 placement 暂不关闭（先画新、后撤旧）",
   st.placement ~= old_p and old_p.closed ~= true, ("old_closed=%s"):format(tostring(old_p.closed)))
+do
+  local ok, autocmds = pcall(vim.api.nvim_get_autocmds, { group = old_p.augroup })
+  lib.ok("旧 placement 的自动更新已即时停用（少发 a=p）",
+    not ok or #autocmds == 0, ok and ("autocmds=%d"):format(#autocmds) or "group 已删除")
+end
 vim.wait(400)
 lib.ok("旧 placement 随后被清理", old_p.closed == true, ("old_closed=%s"):format(tostring(old_p.closed)))
 
@@ -149,6 +154,47 @@ reset()
 vim.wait(300)
 lib.ok("再次复位回适应窗口", st.zoom == 1 and placed() == st.canvas_file,
   ("zoom=%s placed=%s"):format(tostring(st.zoom), tostring(placed())))
+
+-- 幂等：稳定状态下重复复位不重建 placement（避免无意义 a=p）
+do
+  local p_now = st.placement
+  reset()
+  vim.wait(250)
+  lib.ok("重复复位幂等（不重建 placement）", st.placement == p_now and st.zoom == 1,
+    ("same=%s zoom=%s"):format(tostring(st.placement == p_now), tostring(st.zoom)))
+end
+
+-- 滚轮合并渲染：连拨三次只渲染一次、只通知一次（防 WezTerm #7953 的 a=p 风暴）
+do
+  reset()
+  vim.wait(300)
+  local wheel_up = vim.fn.maparg("<ScrollWheelUp>", "n", false, true).callback
+  lib.ok("滚轮缩放键存在", wheel_up ~= nil)
+  local gen0 = st.gen
+  local notifications = 0
+  local orig_notify = vim.notify
+  vim.notify = function(msg, ...)
+    if tostring(msg):find("^查看器:") then
+      notifications = notifications + 1
+    end
+    return orig_notify(msg, ...)
+  end
+  if wheel_up then
+    wheel_up()
+    wheel_up()
+    wheel_up()
+  end
+  lib.ok("滚轮连拨立即推进档位（1→2）", math.abs(st.zoom - 2) < 0.001, "zoom=" .. tostring(st.zoom))
+  vim.wait(60)
+  lib.ok("合并窗口内不渲染", st.gen == gen0, ("gen=%d→%d"):format(gen0, st.gen))
+  local done = vim.wait(1500, function()
+    return st.gen > gen0
+  end, 20)
+  vim.wait(120)
+  vim.notify = orig_notify
+  lib.ok("停下后合并渲染一次", done and st.gen == gen0 + 1, ("gen=%d→%d"):format(gen0, st.gen))
+  lib.ok("滚轮合并只通知一次", notifications == 1, "notifications=" .. tostring(notifications))
+end
 
 vim.cmd("silent! %bwipeout!")
 lib.finish()

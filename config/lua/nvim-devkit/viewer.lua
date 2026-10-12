@@ -122,6 +122,7 @@ local function state(buf)
     plan = nil, -- 最近一次渲染方案
     canvas_key = nil, -- 最近一次画布缓存键
     canvas_file = nil, -- 最近一次画布文件
+    wheel_token = 0, -- 滚轮合并渲染令牌（显式操作会使其失效）
   }
   states[buf] = st
   return st
@@ -170,18 +171,22 @@ local function plan_key(base, plan)
   )):sub(1, 16)
 end
 
---- 放置图片：先创建新 placement、稍后再撤旧 placement（避免"先清后画"的空白帧闪烁）
+--- 放置图片：先创建新 placement、稍后再撤旧 placement（避免"先清后画"的空白帧闪烁）。
+--- 旧 placement 的自动更新会立即停用：WezTerm #7953 中每次 a=p 都会重复累积图片附件
+--- （quad 数爆炸 → 崩溃），必须把重定位次数压到最低。
 local function place(buf, st, file)
   local snacks = require("snacks.image")
   local olds = {}
   if st.placement then
     olds[#olds + 1] = st.placement
   end
-  -- 首次替换时，把 snacks 初次挂载的 placement 也一起纳入延迟清理
+  -- 首次替换时，把 snacks 初次挂载的 placement（仅本 buffer）也一起纳入延迟清理
   local ok_img, img = pcall(snacks.image.new, source_file(st))
   if ok_img and img and img.placements then
     for _, p in pairs(img.placements) do
-      olds[#olds + 1] = p
+      if p.buf == buf then
+        olds[#olds + 1] = p
+      end
     end
   end
 
@@ -203,6 +208,8 @@ local function place(buf, st, file)
 
   for _, old in ipairs(olds) do
     if old ~= st.placement then
+      -- 立刻停掉旧 placement 的自动更新（防止其继续发 a=p 加剧 WezTerm #7953 的附件累积）
+      pcall(vim.api.nvim_del_augroup_by_id, old.augroup)
       vim.defer_fn(function()
         pcall(function()
           old:close()
@@ -262,13 +269,24 @@ local function render(buf, st)
   if st.gen ~= gen then
     return
   end
+  -- 幂等：当前 placement 已在展示同一画布时不再重建（避免无意义 a=p）
+  if
+    st.canvas_file == out
+    and st.placement
+    and not st.placement.closed
+    and st.placement.img
+    and st.placement.img.file == out
+  then
+    return
+  end
   st.canvas_file = out
   place(buf, st, out)
 end
 
 --- placement 更新时确保画布与当前窗口/缩放状态一致（窗口缩放、PDF 转换完成等触发）
+--- 只处理"当前 placement"：旧 placement 在延迟关闭窗口内的 update 不得污染状态或触发重渲染
 function M._ensure_canvas(buf, st, p)
-  if p.closed then
+  if p.closed or p ~= st.placement then
     return
   end
   local file = p.img and p.img.file
@@ -300,12 +318,23 @@ function M._ensure_canvas(buf, st, p)
   end
 end
 
-local function set_zoom(buf, st, zoom)
-  st.zoom = zoom
-  if zoom <= 1 then
-    st.px, st.py = 0.5, 0.5
+--- 使挂起的滚轮合并渲染失效（显式操作立即生效且不重复渲染）
+local function cancel_wheel(st)
+  st.wheel_token = (st.wheel_token or 0) + 1
+end
+
+--- 阶梯档位下标（最接近当前 zoom 的档）
+local function ladder_index(zoom)
+  local idx = 1
+  for i, v in ipairs(ZOOMS) do
+    if math.abs(v - zoom) < 0.001 then
+      idx = i
+    end
   end
-  render(buf, st)
+  return idx
+end
+
+local function zoom_notify(zoom)
   local pct = math.floor(zoom * 100 + 0.5)
   if zoom == 1 then
     notify("适应窗口")
@@ -316,17 +345,22 @@ local function set_zoom(buf, st, zoom)
   end
 end
 
+local function set_zoom(buf, st, zoom)
+  cancel_wheel(st)
+  st.zoom = zoom
+  if zoom <= 1 then
+    st.px, st.py = 0.5, 0.5
+  end
+  render(buf, st)
+  zoom_notify(zoom)
+end
+
 local function zoom_step(buf, st, delta)
   if not magick() then
     notify("缩放需要 ImageMagick（可用 ./install.sh --with-magick 安装）", vim.log.levels.WARN)
     return
   end
-  local idx = 1
-  for i, v in ipairs(ZOOMS) do
-    if math.abs(v - st.zoom) < 0.001 then
-      idx = i
-    end
-  end
+  local idx = ladder_index(st.zoom)
   local next_idx = math.max(1, math.min(#ZOOMS, idx + delta))
   if next_idx == idx then
     if idx == 1 then
@@ -339,12 +373,44 @@ local function zoom_step(buf, st, delta)
   set_zoom(buf, st, ZOOMS[next_idx])
 end
 
+-- 滚轮缩放：连续拨动只调档位（立即生效），停下 WHEEL_MS 后合并成一次渲染+一次通知。
+-- WezTerm ≤ 未合并 PR #8035 的版本里，每次 placement 重定位（a=p）都会在单元格里重复
+-- 累积图片附件（#7953），滚轮每步都渲染会飞快把 quad 数推到千万级并崩溃；合并后每次
+-- 滚动突发只产生 1 次重定位。
+local WHEEL_MS = 140
+
+local function wheel_zoom(buf, st, delta)
+  if not magick() then
+    notify("缩放需要 ImageMagick（可用 ./install.sh --with-magick 安装）", vim.log.levels.WARN)
+    return
+  end
+  local idx = ladder_index(st.zoom)
+  local next_idx = math.max(1, math.min(#ZOOMS, idx + delta))
+  if next_idx == idx then
+    return -- 到顶/到底：静默（合并渲染会给出最终状态提示）
+  end
+  st.wheel_token = (st.wheel_token or 0) + 1
+  local token = st.wheel_token
+  st.zoom = ZOOMS[next_idx]
+  if st.zoom <= 1 then
+    st.px, st.py = 0.5, 0.5
+  end
+  vim.defer_fn(function()
+    if st.wheel_token ~= token or not vim.api.nvim_buf_is_valid(buf) or states[buf] ~= st then
+      return -- 已被后续滚轮或显式操作取代
+    end
+    render(buf, st)
+    zoom_notify(st.zoom)
+  end, WHEEL_MS)
+end
+
 local function pan(buf, st, dx, dy)
   local plan = st.plan
   if not plan or (plan.disp.w <= plan.canvas.w and plan.disp.h <= plan.canvas.h) then
     notify("先放大再平移（+ 放大）")
     return
   end
+  cancel_wheel(st)
   st.px = math.max(plan.px_lo, math.min(plan.px_hi, st.px + dx))
   st.py = math.max(plan.py_lo, math.min(plan.py_hi, st.py + dy))
   render(buf, st)
@@ -363,6 +429,7 @@ local function page(buf, st, delta)
     notify(("已在最后一页（共 %d 页）"):format(st.pages))
     return
   end
+  cancel_wheel(st)
   st.page = target
   render(buf, st)
   if st.pages then
@@ -408,6 +475,9 @@ end
 --- 关闭查看（wipe=true 时删除图片 buffer）
 function M.close(buf, wipe)
   local st = states[buf]
+  if st then
+    cancel_wheel(st)
+  end
   if st and st.placement and not st.placement.closed then
     pcall(function()
       st.placement:close()
@@ -465,6 +535,9 @@ function M.attach(buf)
       pan(buf, st, PAN_STEP, 0)
     end, "右移")
 
+    -- 逃生阀：vim.g.nvkit_viewer_wheel = 0 时滚轮缩放改为空操作（消费事件，避免触发 WezTerm 滚动）
+    local wheel = vim.g.nvkit_viewer_wheel == 0 and function() end or nil
+
     if st.mode == "pdf" then
       map("]p", function()
         page(buf, st, 1)
@@ -478,22 +551,22 @@ function M.attach(buf)
       map("<PageUp>", function()
         page(buf, st, -1)
       end, "上一页")
-      map("<ScrollWheelDown>", function()
+      map("<ScrollWheelDown>", wheel or function()
         page(buf, st, 1)
-      end, "下一页")
-      map("<ScrollWheelUp>", function()
+      end, wheel and "翻页已禁用（vim.g.nvkit_viewer_wheel=0）" or "下一页")
+      map("<ScrollWheelUp>", wheel or function()
         page(buf, st, -1)
-      end, "上一页")
+      end, wheel and "翻页已禁用（vim.g.nvkit_viewer_wheel=0）" or "上一页")
       map("<leader>rt", function()
         require("nvim-devkit.pdf").open(st.src)
       end, "切换到文本模式")
     else
-      map("<ScrollWheelDown>", function()
-        zoom_step(buf, st, -1)
-      end, "缩小")
-      map("<ScrollWheelUp>", function()
-        zoom_step(buf, st, 1)
-      end, "放大")
+      map("<ScrollWheelDown>", wheel or function()
+        wheel_zoom(buf, st, -1)
+      end, wheel and "缩放已禁用（vim.g.nvkit_viewer_wheel=0）" or "缩小")
+      map("<ScrollWheelUp>", wheel or function()
+        wheel_zoom(buf, st, 1)
+      end, wheel and "缩放已禁用（vim.g.nvkit_viewer_wheel=0）" or "放大")
     end
   end
   pcall(render, buf, state(buf))

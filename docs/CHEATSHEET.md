@@ -127,7 +127,7 @@
 - Markdown：打开即渲染（标题/表格/公式）；`:RenderMarkdown toggle` 切原始
 - CSV：打开即表格视图（粘性表头），`:CsvViewToggle` 开关
 - PDF：Kitty/WezTerm 下 `:e paper.pdf` **默认按页看图**（`]p/[p` 或滚轮翻页，`+/-` 缩放 0.5x~8x（等比），`h/j/k/l` 平移，`0` 适应窗口，`q` 关闭，`<leader>rt` 切文本）；其他终端自动转文本，`]p/[p` 翻页
-- 图片（png/jpg/webp…）：打开即在当前窗口等比显示（居中）；`+/-` 或滚轮缩放（0.5x~8x），`h/j/k/l` 平移（放大超出窗口时），`0` 适应窗口，`q` 关闭（JPG 等转换需 ImageMagick，`./install.sh --with-magick`）
+- 图片（png/jpg/webp…）：打开即在当前窗口等比显示（居中）；`+/-` 或滚轮缩放（0.5x~8x；滚轮连拨合并为一次渲染，停下约 0.15s 生效），`h/j/k/l` 平移（放大超出窗口时），`0` 适应窗口，`q` 关闭（JPG 等转换需 ImageMagick，`./install.sh --with-magick`）
 
 ### 终端速记
 - 管理：`<leader>tp` 浮动面板 · `<leader>tb` 底部面板（呼出/收起；没有终端时自动创建）· `<leader>tl` 列表（Enter 切换，`<C-d>` 杀进程）
@@ -176,6 +176,7 @@
 | 更新后坏了 | `git -C ~/nvim-devkit log --oneline -5` → `git checkout <旧提交> -- config/` → 重跑 `install.sh --update` |
 | 分屏分不清 / 压暗不够 | 增强已默认开启：`:NvkitSplits` 开关；调强度 `:lua local t=require("nvim-devkit.theme"); t.options.fg_fade=0.7; t.options.bg_fade=0.5; t.dim_inactive(false); t.dim_inactive(true)`（数值 0~1，越大越明显） |
 | WezTerm 按 `Ctrl+Shift+=` 变放大页面 | WezTerm 默认占用该键调字号，按键到不了 nvim；按下方说明释放默认键（或转发 `F13`） |
+| 滚轮缩放把 WezTerm 弄崩 | WezTerm 已知 bug（wezterm#7953）：kitty 图片每次重定位（a=p）会重复累积图片附件，叠加滚动时 quad 数爆炸（千万级）→ 分配失败 panic。本发行版已把滚轮合并为"停下后一次渲染"、并停用旧 placement 的冗余更新，大幅降低触发率。若仍崩：`:lua vim.g.nvkit_viewer_wheel = 0`（关滚轮缩放，`+/-` 照常）并升级 WezTerm 到含修复（PR #8035）的版本 |
 
 **WezTerm 用户：让 `Ctrl+Shift+=` 生效**
 

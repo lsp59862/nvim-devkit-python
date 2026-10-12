@@ -91,6 +91,29 @@ else
   lib.ok("q 键位存在", false, "callback=nil")
 end
 
+-- 逃生阀：vim.g.nvkit_viewer_wheel = 0 → 滚轮映射为空操作（不再缩放/渲染）
+lib.reset()
+vim.g.nvkit_viewer_wheel = 0
+do
+  local f = assert(io.open(img, "wb"))
+  f:write(vim.base64.decode(png_b64))
+  f:close()
+end
+vim.cmd("edit " .. vim.fn.fnameescape(img))
+vim.bo.filetype = "image"
+local wbuf = vim.api.nvim_get_current_buf()
+local wst = viewer.state(wbuf)
+local wheel_up = vim.fn.maparg("<ScrollWheelUp>", "n", false, true).callback
+lib.ok("逃生阀：滚轮键位仍存在（消费事件）", wheel_up ~= nil)
+local gen0 = wst.gen
+if wheel_up then
+  wheel_up()
+end
+vim.wait(250)
+lib.ok("逃生阀：滚轮不改变缩放、不触发渲染", wst.zoom == 1 and wst.gen == gen0,
+  ("zoom=%s gen=%d→%d"):format(tostring(wst.zoom), gen0, wst.gen))
+vim.g.nvkit_viewer_wheel = nil
+
 -- 另一 buffer 的 pdf 场景：翻页 + rt 切文本
 lib.reset()
 local pdfbuf = vim.api.nvim_create_buf(true, false)
