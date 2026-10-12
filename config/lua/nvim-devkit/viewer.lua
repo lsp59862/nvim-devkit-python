@@ -147,6 +147,12 @@ end
 local function canvas_geom(buf)
   local term = require("snacks.image").terminal.size()
   local cw, ch = term.cell_width, term.cell_height
+  -- SSH 等场景终端可能不上报像素尺寸：允许手动兜底
+  -- vim.g.nvkit_viewer_cell_w / _h（例如 8 / 17）
+  local gw, gh = tonumber(vim.g.nvkit_viewer_cell_w), tonumber(vim.g.nvkit_viewer_cell_h)
+  if gw and gh and gw > 0 and gh > 0 then
+    cw, ch = gw, gh
+  end
   if not (cw and ch and cw > 0 and ch > 0) then
     return
   end
@@ -350,7 +356,8 @@ local function zoom_blocked(buf)
     return true
   end
   if not (canvas_geom(buf)) then
-    notify("缩放不可用：终端未上报单元格像素尺寸（SSH 场景建议用 wezterm ssh / kitty）", vim.log.levels.WARN)
+    notify("缩放不可用：终端未上报单元格像素尺寸（SSH 建议 wezterm ssh；" ..
+      "或用 :lua vim.g.nvkit_viewer_cell_w=8 vim.g.nvkit_viewer_cell_h=17 手动指定）", vim.log.levels.WARN)
     return true
   end
   return false
@@ -713,7 +720,8 @@ function M.attach(buf)
       notify("未安装 ImageMagick：图片按原始布局显示、缩放暂不可用（./install.sh --with-magick 可安装）",
         vim.log.levels.WARN)
     elseif not (canvas_geom(buf)) then
-      notify("终端未上报单元格像素尺寸：缩放暂不可用（SSH 场景建议用 wezterm ssh）", vim.log.levels.WARN)
+      notify("终端未上报单元格像素尺寸：缩放暂不可用（SSH 建议 wezterm ssh；" ..
+        "或用 :lua vim.g.nvkit_viewer_cell_w=8 vim.g.nvkit_viewer_cell_h=17 手动指定）", vim.log.levels.WARN)
     end
   end
 end

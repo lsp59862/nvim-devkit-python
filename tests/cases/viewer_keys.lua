@@ -114,6 +114,37 @@ lib.ok("逃生阀：滚轮不改变缩放、不触发渲染", wst.zoom == 1 and 
   ("zoom=%s gen=%d→%d"):format(tostring(wst.zoom), gen0, wst.gen))
 vim.g.nvkit_viewer_wheel = nil
 
+-- 单元格像素尺寸手动兜底（SSH 未上报像素尺寸时用 vim.g.nvkit_viewer_cell_w/_h）
+if vim.fn.executable("magick") == 1 then
+  lib.reset()
+  vim.g.nvkit_viewer_cell_w = 10
+  vim.g.nvkit_viewer_cell_h = 20
+  do
+    local f = assert(io.open(img, "wb"))
+    f:write(vim.base64.decode(png_b64))
+    f:close()
+  end
+  vim.cmd("edit " .. vim.fn.fnameescape(img))
+  vim.bo.filetype = "image"
+  local obuf = vim.api.nvim_get_current_buf()
+  local ost = viewer.state(obuf)
+  vim.wait(1500, function()
+    return ost and ost.canvas_file ~= nil
+  end, 50)
+  local W = vim.api.nvim_win_get_width(0)
+  local H = vim.api.nvim_win_get_height(0)
+  local okd, dims = pcall(require("snacks.image").util.dim, ost.canvas_file)
+  lib.ok("单元格尺寸手动兜底：画布按该尺寸生成",
+    ost.canvas_file ~= nil and okd and dims.width == math.floor(W * 10) + 1 and dims.height == math.floor(H * 20) + 1,
+    ("canvas=%s dims=%s expect=%dx%d"):format(tostring(ost.canvas_file),
+      okd and ("%dx%d"):format(dims.width, dims.height) or "?",
+      math.floor(W * 10) + 1, math.floor(H * 20) + 1))
+  vim.g.nvkit_viewer_cell_w = nil
+  vim.g.nvkit_viewer_cell_h = nil
+else
+  lib.ok("单元格尺寸手动兜底（需要 ImageMagick，跳过）", true, "optional")
+end
+
 -- 环境缺 ImageMagick 时的降级：普通放置（左上角）、缩放不生效且不重建 placement
 lib.reset()
 local old_path = vim.env.PATH
