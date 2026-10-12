@@ -81,13 +81,70 @@ local function source_file(st)
   return st.src
 end
 
+--- 可视区域（当前窗口或编辑器，留 2 格边距，避免图片上下贴边"霸屏"）
+local function view_box(buf)
+  local w, h = vim.o.columns, vim.o.lines
+  for _, win in ipairs(vim.fn.win_findbuf(buf)) do
+    if vim.api.nvim_win_get_config(win).relative == "" then
+      w = math.min(w, vim.api.nvim_win_get_width(win))
+      h = math.min(h, vim.api.nvim_win_get_height(win))
+    end
+  end
+  return math.max(4, w - 2), math.max(2, h - 2)
+end
+
+--- 图片按单元格适配框内（保持宽高比）；尺寸未知返回 nil
+local function fit_cells(file, box_w, box_h)
+  local snacks = require("snacks.image")
+  local term = snacks.terminal.size()
+  local ok, dims = pcall(snacks.util.dim, file)
+  if not ok or not dims then
+    return nil
+  end
+  local iw = dims.width / math.max(1, term.cell_width)
+  local ih = dims.height / math.max(1, term.cell_height)
+  local s = math.min(box_w / iw, box_h / ih)
+  return math.max(1, math.floor(iw * s + 0.5)), math.max(1, math.floor(ih * s + 0.5))
+end
+
+--- 放置图片：先创建新 placement、稍后再撤旧 placement。
+--- 若"先清后画"，终端会出现一帧空白（观感即闪烁）；窗口缩放由 auto_resize +
+--- on_update_pre 动态重算尺寸处理。
 local function place(buf, st, file)
   local snacks = require("snacks.image")
-  snacks.placement.clean(buf)
+  local olds = {}
+  if st.placement then
+    olds[#olds + 1] = st.placement
+  end
+  -- 首次替换时，把 snacks 初次挂载的 placement 也一起纳入延迟清理
+  local ok_img, img = pcall(snacks.image.new, source_file(st))
+  if ok_img and img and img.placements then
+    for _, p in pairs(img.placements) do
+      olds[#olds + 1] = p
+    end
+  end
+
   st.placement = snacks.placement.new(buf, file, {
     conceal = true,
     auto_resize = true,
+    on_update_pre = function(p)
+      local w, h = view_box(buf)
+      local cw, ch = fit_cells(p.img.file or file, w, h)
+      if cw then
+        p.opts.width, p.opts.height = cw, ch
+      end
+    end,
   })
+
+  for _, old in ipairs(olds) do
+    if old ~= st.placement then
+      vim.defer_fn(function()
+        pcall(function()
+          old:close()
+        end)
+      end, 60)
+    end
+  end
 end
 
 --- 渲染当前状态；zoom > 1 时用 magick 裁剪视口后再交给 snacks 放置
