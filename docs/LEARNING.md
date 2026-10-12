@@ -148,8 +148,8 @@
 ### Day 11 — Markdown / CSV / PDF（文献与数据）
 - Markdown：打开即内联渲染；`<leader>sk` 里有 `:RenderMarkdown toggle` 可切原始视图
 - CSV：打开即表格视图（`CsvViewToggle` 手动开关，粘性表头方便对列）
-- PDF：直接 `:e paper.pdf`；Kitty/WezTerm 下默认在居中浮窗按页看图（`]p/[p`、滚轮翻页；`+/-` 缩放 0.5x~8x；`h/j/k/l` 平移；`0` 适应窗口；`q` 关闭预览），`<leader>rt` 与文本模式互切；其他终端自动转文本
-- 图片：`png/jpg/webp` 打开即在居中浮窗预览（原窗口内容保留），缩放/平移/关闭键位同上
+- PDF：直接 `:e paper.pdf`；Kitty/WezTerm 下默认按页看图（`]p/[p`、滚轮翻页；`+/-` 缩放 0.5x~8x 等比；`h/j/k/l` 平移；`0` 适应窗口；`q` 关闭），`<leader>rt` 与文本模式互切；其他终端自动转文本
+- 图片：`png/jpg/webp` 打开即在当前窗口等比显示（小图不放大、大图缩至窗口并居中），缩放/平移/关闭键位同上
 - 练习：用 PDF 阅读 + `<leader>sw` 搜索 + 摘录到 Markdown 笔记
 
 ### Day 12 — opencode 深度协作

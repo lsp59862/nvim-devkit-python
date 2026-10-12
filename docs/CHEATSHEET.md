@@ -126,8 +126,8 @@
 ### 读文献 / 数据
 - Markdown：打开即渲染（标题/表格/公式）；`:RenderMarkdown toggle` 切原始
 - CSV：打开即表格视图（粘性表头），`:CsvViewToggle` 开关
-- PDF：Kitty/WezTerm 下 `:e paper.pdf` **默认在居中浮窗按页看图**（原窗口内容保留；`]p/[p` 或滚轮翻页，`+/-` 缩放 0.5x~8x，`h/j/k/l` 平移，`0` 适应窗口，`q` 关闭预览，`<leader>rt` 切文本）；其他终端自动转文本，`]p/[p` 翻页
-- 图片（png/jpg/webp…）：打开即在居中浮窗预览（原窗口内容保留）；`+/-` 或滚轮缩放（0.5x~8x），`h/j/k/l` 平移，`0` 适应窗口，`q` 关闭（JPG 等转换需 ImageMagick，`./install.sh --with-magick`）
+- PDF：Kitty/WezTerm 下 `:e paper.pdf` **默认按页看图**（`]p/[p` 或滚轮翻页，`+/-` 缩放 0.5x~8x（等比），`h/j/k/l` 平移，`0` 适应窗口，`q` 关闭，`<leader>rt` 切文本）；其他终端自动转文本，`]p/[p` 翻页
+- 图片（png/jpg/webp…）：打开即在当前窗口等比显示（居中）；`+/-` 或滚轮缩放（0.5x~8x），`h/j/k/l` 平移（放大超出窗口时），`0` 适应窗口，`q` 关闭（JPG 等转换需 ImageMagick，`./install.sh --with-magick`）
 
 ### 终端速记
 - 管理：`<leader>tp` 浮动面板 · `<leader>tb` 底部面板（呼出/收起；没有终端时自动创建）· `<leader>tl` 列表（Enter 切换，`<C-d>` 杀进程）

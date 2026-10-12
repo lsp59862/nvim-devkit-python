@@ -1,29 +1,55 @@
--- 查看器：裁剪/缩小纯函数、PDF 页数解析、ft=image 预览浮窗与键位
+-- 查看器：等比缩放纯函数（_plan/_render_cmd）、PDF 页数解析、ft=image 普通窗口显示与键位
 local lib = dofile((vim.env.NVIM_DEVKIT_TESTS or vim.fn.fnamemodify(debug.getinfo(1, "S").source:sub(2), ":p:h:h")) .. "/lib.lua")
 local viewer = require("nvim-devkit.viewer")
 local pdf = require("nvim-devkit.pdf")
 
--- 缩放几何（纯函数）
-local fit = viewer._crop(1000, 500, 1, 0.5, 0.5)
-lib.ok("适应窗口：裁剪=原图", fit.w == 1000 and fit.h == 500 and fit.x == 0 and fit.y == 0,
-  vim.inspect(fit))
-local half = viewer._crop(1000, 500, 2, 0.5, 0.5)
-lib.ok("2x：中心裁剪一半", half.w == 500 and half.h == 250 and half.x == 250 and half.y == 125,
-  vim.inspect(half))
-local clamped = viewer._crop(1000, 500, 2, 2, -1)
-lib.ok("平移越界被夹紧", clamped.x == 500 and clamped.y == 0, vim.inspect(clamped))
-local cmd = viewer._crop_cmd("magick", "in.png", "out.png", half)
-lib.ok("裁剪命令正确", cmd[1] == "magick" and cmd[3] == "-crop" and cmd[4] == "500x250+250+125",
-  vim.inspect(cmd))
-local scmd = viewer._scale_cmd("magick", "in.png", "out.png", 50)
-lib.ok("缩小命令正确", scmd[1] == "magick" and scmd[3] == "-resize" and scmd[4] == "50%",
-  vim.inspect(scmd))
+-- _plan：z=1 整图适应画布（1000x500 图，500x250 画布 → s=0.5）
+local p1 = viewer._plan(1000, 500, 500, 250, 1, 0.5, 0.5)
+lib.ok("z=1：整图适应、无裁剪、落点 0,0",
+  p1.crop.w == 1000 and p1.crop.h == 500 and p1.crop.x == 0 and p1.crop.y == 0
+    and p1.resize.w == 500 and p1.resize.h == 250 and p1.offset.x == 0 and p1.offset.y == 0,
+  vim.inspect(p1))
+
+-- _plan：2x 中心取景（s=1）
+local p2 = viewer._plan(1000, 500, 500, 250, 2, 0.5, 0.5)
+lib.ok("2x：中心取景一半、等比铺满",
+  p2.crop.w == 500 and p2.crop.h == 250 and p2.crop.x == 250 and p2.crop.y == 125
+    and p2.resize.w == 500 and p2.resize.h == 250 and p2.offset.x == 0 and p2.offset.y == 0,
+  vim.inspect(p2))
+
+-- _plan：平移被夹紧（不允许取景越出原图）
+local p3 = viewer._plan(1000, 500, 500, 250, 2, 0, 0.5)
+lib.ok("平移夹紧到左边缘", p3.px == 0.25 and p3.crop.x == 0 and p3.offset.x == 0, vim.inspect(p3))
+local p4 = viewer._plan(1000, 500, 500, 250, 2, 1, 0.5)
+lib.ok("平移夹紧到右边缘", p4.px == 0.75 and p4.crop.x == 500, vim.inspect(p4))
+
+-- _plan：z<1 整图缩小并居中
+local p5 = viewer._plan(1000, 400, 500, 250, 0.5, 0.5, 0.5)
+lib.ok("z=0.5：整图缩小并居中",
+  p5.crop.w == 1000 and p5.crop.h == 400 and p5.crop.x == 0 and p5.crop.y == 0
+    and p5.resize.w == 250 and p5.resize.h == 100 and p5.offset.x == 125 and p5.offset.y == 75,
+  vim.inspect(p5))
+
+-- _plan：等比（正方形图任意取景下 x/y 缩放系数一致）
+local p6 = viewer._plan(1000, 1000, 500, 250, 2, 0.5, 0.5)
+lib.ok("等比缩放系数一致（x/y 同为 0.5）",
+  p6.resize.w / p6.crop.w == 0.5 and p6.resize.h / p6.crop.h == 0.5, vim.inspect(p6))
+
+-- _render_cmd：透明画布 + 裁剪 + 等比缩放 + 按落点合成（不用 -extent）
+local rcmd = viewer._render_cmd("magick", "in.png", "out.png", p2)
+lib.ok("渲染命令结构正确",
+  rcmd[1] == "magick" and rcmd[2] == "-size" and rcmd[3] == "500x250" and rcmd[4] == "xc:none"
+    and rcmd[5] == "(" and rcmd[6] == "in.png"
+    and rcmd[7] == "-crop" and rcmd[8] == "500x250+250+125"
+    and rcmd[10] == "-resize" and rcmd[11] == "500x250"
+    and rcmd[14] == "-geometry" and rcmd[15] == "+0+0" and rcmd[16] == "-composite",
+  vim.inspect(rcmd))
 
 -- PDF 页数解析（pdfinfo 输出）
 lib.eq("pdfinfo Pages 解析", pdf.parse_pages("Title: x\nPages:          12\nPage size: 595 x 842 pts"), 12)
 lib.eq("pdfinfo 无 Pages 行", pdf.parse_pages("Author: y"), nil)
 
--- 图片：预览浮窗 + 键位 + q 关闭
+-- 图片：普通窗口显示（无浮窗）+ 键位 + q 关闭
 lib.reset()
 local png_b64 = "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg=="
 local img = lib.dir() .. "/viewer_probe.png"
@@ -32,21 +58,17 @@ do
   f:write(vim.base64.decode(png_b64))
   f:close()
 end
+local wins_before = #vim.api.nvim_tabpage_list_wins(0)
 vim.cmd("edit " .. vim.fn.fnameescape(img))
 vim.bo.filetype = "image" -- 触发 FileType autocmd（真实路径由 snacks 设置）
 local imgbuf = vim.api.nvim_get_current_buf()
 local st = viewer.state(imgbuf)
-lib.ok("预览浮窗已打开（当前窗口为浮窗）",
-  vim.api.nvim_win_get_config(0).relative == "editor", vim.inspect(vim.api.nvim_win_get_config(0).relative))
-lib.ok("预览浮窗为 90% 居中",
-  st ~= nil
-    and vim.api.nvim_win_get_width(0) == math.max(20, math.floor(vim.o.columns * 0.9))
-    and vim.api.nvim_win_get_height(0) == math.max(6, math.floor(vim.o.lines * 0.9)),
-  st and ("%dx%d"):format(vim.api.nvim_win_get_width(0), vim.api.nvim_win_get_height(0)) or "no-state")
-lib.ok("原窗口保留（home 有效且不再显示图片）",
-  st ~= nil and st.home ~= nil and vim.api.nvim_win_is_valid(st.home)
-    and vim.api.nvim_win_get_buf(st.home) ~= imgbuf,
-  st and ("home=%s buf=%s"):format(tostring(st.home), tostring(st.home and vim.api.nvim_win_get_buf(st.home))) or "no-state")
+lib.ok("图片在普通窗口显示（无浮窗）",
+  vim.api.nvim_win_get_config(0).relative == "" and vim.api.nvim_get_current_buf() == imgbuf,
+  ("win=%s buf=%s"):format(vim.inspect(vim.api.nvim_win_get_config(0).relative), tostring(imgbuf)))
+lib.ok("未额外创建窗口", #vim.api.nvim_tabpage_list_wins(0) == wins_before,
+  ("wins=%d before=%d"):format(#vim.api.nvim_tabpage_list_wins(0), wins_before))
+lib.ok("查看器状态建立", st ~= nil, vim.inspect(st and { zoom = st.zoom, mode = st.mode }))
 
 local keys = {}
 for _, m in ipairs(vim.api.nvim_buf_get_keymap(0, "n")) do
@@ -62,14 +84,14 @@ local q = vim.fn.maparg("q", "n", false, true).callback
 if q then
   q()
   vim.wait(200)
-  lib.ok("q 关闭预览并删除 buffer",
+  lib.ok("q 关闭并删除 buffer",
     not vim.api.nvim_buf_is_valid(imgbuf) and #vim.fn.win_findbuf(imgbuf) == 0,
     ("valid=%s wins=%d"):format(tostring(vim.api.nvim_buf_is_valid(imgbuf)), #vim.fn.win_findbuf(imgbuf)))
 else
   lib.ok("q 键位存在", false, "callback=nil")
 end
 
--- 另一 buffer 的 pdf 场景：翻页 + rt 切文本（不入渲染路径）
+-- 另一 buffer 的 pdf 场景：翻页 + rt 切文本
 lib.reset()
 local pdfbuf = vim.api.nvim_create_buf(true, false)
 vim.api.nvim_buf_set_name(pdfbuf, "/tmp/nvim-devkit-tests/viewer_probe.pdf")

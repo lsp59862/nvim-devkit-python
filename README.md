@@ -108,8 +108,8 @@ cd ~/nvim-devkit && ./install.sh --update
 | Jupyter | molten-nvim + jupytext（`.py` 里跑 cell、输出内嵌；内核 `devkit-python`） |
 | Markdown | render-markdown（标题/表格/公式内联渲染） |
 | CSV | csvview（表格线、粘性表头、分隔符自动识别） |
-| PDF | 文本双栏提取（任何终端）+ Kitty 终端下默认在居中浮窗按页看图，`]p/[p` 翻页、`+/-` 缩放（0.5x~8x）、`h/j/k/l` 平移、`q` 关闭预览、`<leader>rt` 切文本 |
-| 图片 | png/jpg/webp 等打开即在居中浮窗预览（原窗口内容保留）；`+/-`/滚轮缩放（0.5x~8x）、`h/j/k/l` 平移、`0` 适应窗口、`q` 关闭（Kitty/WezTerm；JPG 转换需 ImageMagick） |
+| PDF | 文本双栏提取（任何终端）+ Kitty 终端下默认按页看图，`]p/[p` 翻页、`+/-` 缩放（0.5x~8x，等比）、`h/j/k/l` 平移、`0` 适应窗口、`q` 关闭、`<leader>rt` 切文本 |
+| 图片 | png/jpg/webp 等打开即在当前窗口等比显示（留边距居中）；`+/-`/滚轮缩放（0.5x~8x）、`h/j/k/l` 平移、`0` 适应窗口、`q` 关闭（Kitty/WezTerm；JPG 转换需 ImageMagick） |
 | Git | gitsigns + lazygit 浮窗 + gitbrowse |
 | AI | opencode.nvim（`<leader>oa` 提问并注入当前上下文，编辑 diff 审阅） |
 | 终端 | VS Code 式面板：浮动（`<leader>tp`）/ 底部（`<leader>tb`）/ 列表（`<leader>tl`）；侧边栏（圆角包边、当前高亮）显示名字、鼠标点击切换；终端内 `Alt+N` 新建同类、`Alt+J`/`Alt+K` 循环、`Alt+R` 重命名、`Ctrl+Shift+=` 最大化/还原（WezTerm 需先释放默认键，见速查卡）；浮动面板从中心“点→线→分裂”展开、镜像折叠（时长可调） |
@@ -278,7 +278,7 @@ Vim 的"模式 + 前缀键 + 寄存器"让误按后果难以预期。本配置�
 ## 行为测试
 
 ```bash
-./tests/run.sh           # 行为测试：35 个用例 / 188 项断言，必须全部通过
+./tests/run.sh           # 行为测试：35 个用例 / 190 项断言，必须全部通过
 scripts/checkhealth.sh   # 健康检查：硬错误必须为 0
 ```
 

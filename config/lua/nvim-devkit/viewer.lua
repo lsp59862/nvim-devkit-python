@@ -1,13 +1,12 @@
--- 图片/PDF 查看器（VS Code 式预览）：
---   · 打开图片时在屏幕中央 90% 浮窗中显示，原窗口内容保留
---   · +/-/滚轮缩放（0.5x~8x，>1 用 ImageMagick 裁剪视口，<1 用缩小），h/j/k/l 平移，0 适应窗口
+-- 图片/PDF 查看器（等比缩放，普通窗口显示）：
+--   · 把整图按等比缩放绘制到"窗口大小的画布"上：=1 适应窗口居中、<1 整图缩小居中、>1 放大后平移查看
+--   · 画布像素尺寸与窗口格子一一对应，避免终端把图强行拉伸到整格导致的宽高比失真
+--   · +/-/滚轮缩放（0.5x~8x），h/j/k/l 平移，0 适应窗口，q 关闭
 --   · PDF 在 Kitty 终端下同样默认按页看图（]p/[p、滚轮翻页，<leader>rt 切文本）
---   · q 关闭预览；换图"先画新、后撤旧"避免闪烁；尺寸适配浮窗（留边距、保持宽高比）
 local M = {}
 
 local ZOOMS = { 0.5, 0.75, 1, 1.25, 1.5, 2, 3, 4, 6, 8 }
 local PAN_STEP = 0.15
-local FLOAT_RATIO = 0.9
 
 local function cache_dir()
   local dir = vim.fn.stdpath("cache") .. "/nvim-devkit/viewer"
@@ -28,31 +27,77 @@ local function notify(msg, level)
   vim.notify("查看器: " .. msg, level or vim.log.levels.INFO)
 end
 
---- 计算缩放视口的裁剪窗口（纯函数，供测试；zoom >= 1）
+--- 等比缩放渲染方案（纯函数，供测试）
+--- 整图以 s = s0*zoom 的缩放绘制在 canvas 上，画布即窗口像素尺寸；
+--- 返回原图取景裁剪、缩放目标、在画布上的落点（全部整数，供 magick 使用）
 ---@param iw number 原图宽（像素）
 ---@param ih number 原图高（像素）
----@param zoom number 1 = 适应窗口
----@param px number 水平中心 [0,1]
----@param py number 垂直中心 [0,1]
-function M._crop(iw, ih, zoom, px, py)
-  zoom = math.max(1, zoom or 1)
-  local w = math.max(1, math.floor(iw / zoom))
-  local h = math.max(1, math.floor(ih / zoom))
-  local x = math.floor((iw - w) * (px or 0.5) + 0.5)
-  local y = math.floor((ih - h) * (py or 0.5) + 0.5)
-  x = math.max(0, math.min(iw - w, x))
-  y = math.max(0, math.min(ih - h, y))
-  return { w = w, h = h, x = x, y = y }
+---@param pw number 画布宽（像素，=窗口列数×单元格宽）
+---@param ph number 画布高（像素）
+---@param zoom number 相对于"适应窗口"的倍数
+---@param px number 取景中心 x [0,1]
+---@param py number 取景中心 y [0,1]
+function M._plan(iw, ih, pw, ph, zoom, px, py)
+  zoom = zoom or 1
+  local s0 = math.min(pw / iw, ph / ih, 1) -- 适应窗口（小图不放大）
+  local s = s0 * zoom
+  local dw, dh = iw * s, ih * s
+
+  local function clamp_axis(p, disp, canvas)
+    if disp <= canvas then
+      return 0.5, 0.5, 0.5 -- 整幅可见：锁定居中
+    end
+    local lo = canvas / (2 * disp)
+    return math.max(lo, math.min(1 - lo, p or 0.5)), lo, 1 - lo
+  end
+
+  local cx, px_lo, px_hi = clamp_axis(px, dw, pw)
+  local cy, py_lo, py_hi = clamp_axis(py, dh, ph)
+  local dx = pw / 2 - cx * dw -- 整图左上角在画布中的位置
+  local dy = ph / 2 - cy * dh
+
+  -- 画布可见部分对应的原图区域（可能与整图相交）
+  local x0 = math.max(0, -dx / s)
+  local y0 = math.max(0, -dy / s)
+  local x1 = math.min(iw, (pw - dx) / s)
+  local y1 = math.min(ih, (ph - dy) / s)
+  local fx0, fy0 = math.floor(x0), math.floor(y0)
+  local cw = math.max(1, math.ceil(x1) - fx0)
+  local ch = math.max(1, math.ceil(y1) - fy0)
+
+  return {
+    s = s,
+    s0 = s0,
+    canvas = { w = pw, h = ph },
+    disp = { w = dw, h = dh },
+    crop = { x = fx0, y = fy0, w = cw, h = ch },
+    resize = { w = math.max(1, math.floor(cw * s + 0.5)), h = math.max(1, math.floor(ch * s + 0.5)) },
+    offset = { x = math.floor(dx + fx0 * s + 0.5), y = math.floor(dy + fy0 * s + 0.5) },
+    px = cx,
+    py = cy,
+    px_lo = px_lo,
+    px_hi = px_hi,
+    py_lo = py_lo,
+    py_hi = py_hi,
+  }
 end
 
---- 构造裁剪命令（纯函数，供测试）
-function M._crop_cmd(cmd, src, out, geom)
-  return { cmd, src, "-crop", ("%dx%d+%d+%d"):format(geom.w, geom.h, geom.x, geom.y), "+repage", out }
-end
-
---- 构造缩小命令（纯函数，供测试；zoom < 1 时按百分比缩小整图）
-function M._scale_cmd(cmd, src, out, pct)
-  return { cmd, src, "-resize", ("%d%%"):format(pct), out }
+--- 构造渲染命令（纯函数，供测试）：
+--- 透明画布 + 裁剪原图 + 等比缩放 + 按落点合成（不用 -extent，其偏移语义反直觉）
+function M._render_cmd(cmd, src, out, plan)
+  return {
+    cmd,
+    "-size", ("%dx%d"):format(plan.canvas.w, plan.canvas.h), "xc:none",
+    "(",
+    src,
+    "-crop", ("%dx%d+%d+%d"):format(plan.crop.w, plan.crop.h, plan.crop.x, plan.crop.y), "+repage",
+    "-resize", ("%dx%d"):format(plan.resize.w, plan.resize.h), "+repage",
+    ")",
+    "-geometry", ("%+d%+d"):format(plan.offset.x, plan.offset.y),
+    "-composite",
+    "-strip",
+    out,
+  }
 end
 
 --- 查看器状态按 buffer 存在模块内（放 vim.b 会被转成 VimL dict，读回是副本）
@@ -65,7 +110,8 @@ local function state(buf)
   local name = vim.api.nvim_buf_get_name(buf)
   local ext = vim.fn.fnamemodify(name, ":e"):lower()
   st = {
-    src = name,
+    src = name, -- 当前渲染源（PDF 会随页码变化）
+    src_dims = nil, -- 源像素尺寸
     mode = ext == "pdf" and "pdf" or "image",
     zoom = 1,
     px = 0.5,
@@ -73,8 +119,9 @@ local function state(buf)
     page = 1,
     pages = nil,
     gen = 0,
-    win = nil, -- 预览浮窗
-    home = nil, -- 打开预览前的窗口
+    plan = nil, -- 最近一次渲染方案
+    canvas_key = nil, -- 最近一次画布缓存键
+    canvas_file = nil, -- 最近一次画布文件
   }
   states[buf] = st
   return st
@@ -92,32 +139,35 @@ local function source_file(st)
   return st.src
 end
 
-local function float_title(st)
-  return " " .. vim.fn.fnamemodify(st.src, ":t") .. " "
+--- 画布几何：窗口格数 + 单元格像素 → 画布像素
+--- 画布比"格数×单元格像素"多 1px，确保 snacks 的 fit 判定走"整数格子"分支
+local function canvas_geom(buf)
+  local term = require("snacks.image").terminal.size()
+  local cw, ch = term.cell_width, term.cell_height
+  if not (cw and ch and cw > 0 and ch > 0) then
+    return
+  end
+  local W, H = vim.o.columns, vim.o.lines
+  local wins = vim.fn.win_findbuf(buf)
+  if #wins > 0 then
+    for _, win in ipairs(wins) do
+      W = math.min(W, vim.api.nvim_win_get_width(win))
+      H = math.min(H, vim.api.nvim_win_get_height(win))
+    end
+  else
+    H = math.max(1, H - 2)
+  end
+  return W, H, math.floor(W * cw) + 1, math.floor(H * ch) + 1
 end
 
---- 可视区域：buffer 所在窗口（优先预览浮窗）；留 2 格边距
-local function view_box(buf)
-  local w, h = vim.o.columns, vim.o.lines
-  for _, win in ipairs(vim.fn.win_findbuf(buf)) do
-    w = math.min(w, vim.api.nvim_win_get_width(win))
-    h = math.min(h, vim.api.nvim_win_get_height(win))
-  end
-  return math.max(4, w - 2), math.max(2, h - 2)
-end
-
---- 图片按单元格适配框内（保持宽高比）；尺寸未知返回 nil
-local function fit_cells(file, box_w, box_h)
-  local snacks = require("snacks.image")
-  local term = snacks.terminal.size()
-  local ok, dims = pcall(snacks.util.dim, file)
-  if not ok or not dims then
-    return nil
-  end
-  local iw = dims.width / math.max(1, term.cell_width)
-  local ih = dims.height / math.max(1, term.cell_height)
-  local s = math.min(box_w / iw, box_h / ih)
-  return math.max(1, math.floor(iw * s + 0.5)), math.max(1, math.floor(ih * s + 0.5))
+local function plan_key(base, plan)
+  return vim.fn.sha256(("%s|%d,%d,%d,%d|%d,%d|%d,%d|%d,%d"):format(
+    base,
+    plan.crop.w, plan.crop.h, plan.crop.x, plan.crop.y,
+    plan.resize.w, plan.resize.h,
+    plan.offset.x, plan.offset.y,
+    plan.canvas.w, plan.canvas.h
+  )):sub(1, 16)
 end
 
 --- 放置图片：先创建新 placement、稍后再撤旧 placement（避免"先清后画"的空白帧闪烁）
@@ -139,11 +189,15 @@ local function place(buf, st, file)
     conceal = true,
     auto_resize = true,
     on_update_pre = function(p)
-      local w, h = view_box(buf)
-      local cw, ch = fit_cells(p.img.file or file, w, h)
-      if cw then
-        p.opts.width, p.opts.height = cw, ch
+      if p.closed then
+        return
       end
+      local W, H = canvas_geom(buf)
+      if W then
+        p.opts.width, p.opts.height = W, H
+      end
+      -- 画布缺失（窗口尺寸/缩放/平移变化或转换完成）时补烘焙
+      M._ensure_canvas(buf, st, p)
     end,
   })
 
@@ -158,18 +212,7 @@ local function place(buf, st, file)
   end
 end
 
---- 等待 PDF 页面转换产物就绪；gen 变化（被打断）返回 false
-local function wait_base(st, base, gen)
-  if vim.fn.filereadable(base) == 1 then
-    return true
-  end
-  vim.wait(8000, function()
-    return st.gen ~= gen or vim.fn.filereadable(base) == 1
-  end, 50)
-  return st.gen == gen and vim.fn.filereadable(base) == 1
-end
-
---- 渲染当前状态：>1 裁剪视口，<1 整图缩小，=1 原图
+--- 渲染当前状态：等比缩放绘制到窗口画布
 local function render(buf, st)
   if not vim.api.nvim_buf_is_valid(buf) then
     return
@@ -177,73 +220,84 @@ local function render(buf, st)
   st.gen = st.gen + 1
   local gen = st.gen
   local snacks = require("snacks.image")
-  local img = snacks.image.new(source_file(st))
-  local base = img.file
+  local ok_img, img = pcall(snacks.image.new, source_file(st))
+  local base = ok_img and img and img.file or nil
   if type(base) ~= "string" then
-    return -- 源文件不可用（如无效 PDF / 转换失败），保留键位但不渲染
-  end
-
-  if st.zoom == 1 then
-    place(buf, st, base)
     return
   end
+  st.src = base
 
+  local okdim, dims = pcall(snacks.util.dim, base)
+  if not okdim or not dims then
+    place(buf, st, base) -- 转换未完成（如 PDF 首页）：普通放置，完成后再补
+    return
+  end
+  st.src_dims = dims
+
+  local okgeom, W, H, pw, ph = pcall(canvas_geom, buf)
   local cmd = magick()
-  if not cmd then
-    st.zoom = 1
-    notify("缩放需要 ImageMagick（可用 ./install.sh --with-magick 安装）", vim.log.levels.WARN)
-    place(buf, st, base)
-    return
-  end
-  if not wait_base(st, base, gen) then
-    if st.gen ~= gen then
-      return
+  if not (okgeom and W and cmd) then
+    place(buf, st, base) -- 无 ImageMagick / 无单元格像素信息：退化普通放置
+    if okgeom and W then
+      st.plan = M._plan(dims.width, dims.height, pw, ph, st.zoom, st.px, st.py)
+      st.canvas_key = plan_key(base, st.plan)
     end
-    st.zoom = 1
-    notify("图片转换未就绪，已回到适应窗口", vim.log.levels.WARN)
-    place(buf, st, base)
     return
   end
 
-  local hash, out
-  if st.zoom < 1 then
-    local pct = math.max(5, math.floor(st.zoom * 100 + 0.5))
-    hash = vim.fn.sha256(("%s|scale|%d"):format(base, pct)):sub(1, 16)
-    out = ("%s/%s.png"):format(cache_dir(), hash)
-    if vim.fn.filereadable(out) == 0 then
-      local res = vim.system(M._scale_cmd(cmd, base, out, pct), { text = true }):wait(20000)
-      if res.code ~= 0 then
-        st.zoom = 1
-        notify("缩小失败：" .. vim.trim(res.stderr or "unknown"), vim.log.levels.WARN)
-        place(buf, st, base)
-        return
-      end
-    end
-  else
-    local ok, dims = pcall(snacks.util.dim, base)
-    if not ok then
-      st.zoom = 1
-      notify("无法读取图片尺寸，已回到适应窗口", vim.log.levels.WARN)
+  local plan = M._plan(dims.width, dims.height, pw, ph, st.zoom, st.px, st.py)
+  st.plan = plan
+  st.px, st.py = plan.px, plan.py
+  local key = plan_key(base, plan)
+  st.canvas_key = key
+  local out = ("%s/%s.png"):format(cache_dir(), key)
+  if vim.fn.filereadable(out) == 0 then
+    local res = vim.system(M._render_cmd(cmd, base, out, plan), { text = true }):wait(20000)
+    if res.code ~= 0 then
+      notify("绘制失败：" .. vim.trim(res.stderr or "unknown"), vim.log.levels.WARN)
       place(buf, st, base)
       return
-    end
-    local geom = M._crop(dims.width, dims.height, st.zoom, st.px, st.py)
-    hash = vim.fn.sha256(("%s|%dx%d+%d+%d"):format(base, geom.w, geom.h, geom.x, geom.y)):sub(1, 16)
-    out = ("%s/%s.png"):format(cache_dir(), hash)
-    if vim.fn.filereadable(out) == 0 then
-      local res = vim.system(M._crop_cmd(cmd, base, out, geom), { text = true }):wait(20000)
-      if res.code ~= 0 then
-        st.zoom = 1
-        notify("缩放裁剪失败：" .. vim.trim(res.stderr or "unknown"), vim.log.levels.WARN)
-        place(buf, st, base)
-        return
-      end
     end
   end
   if st.gen ~= gen then
     return
   end
+  st.canvas_file = out
   place(buf, st, out)
+end
+
+--- placement 更新时确保画布与当前窗口/缩放状态一致（窗口缩放、PDF 转换完成等触发）
+function M._ensure_canvas(buf, st, p)
+  if p.closed then
+    return
+  end
+  local file = p.img and p.img.file
+  if type(file) ~= "string" then
+    return
+  end
+  if file ~= st.canvas_file then
+    local ok, dims = pcall(require("snacks.image").util.dim, file)
+    if not ok or not dims then
+      return
+    end
+    st.src = file
+    st.src_dims = dims
+  end
+  if not st.src_dims then
+    return
+  end
+  local okgeom, W, H, pw, ph = pcall(canvas_geom, buf)
+  if not (okgeom and W) then
+    return
+  end
+  local plan = M._plan(st.src_dims.width, st.src_dims.height, pw, ph, st.zoom, st.px, st.py)
+  local key = plan_key(st.src, plan)
+  if key ~= st.canvas_key then
+    st.canvas_key = key
+    vim.schedule(function()
+      render(buf, st)
+    end)
+  end
 end
 
 local function set_zoom(buf, st, zoom)
@@ -263,6 +317,10 @@ local function set_zoom(buf, st, zoom)
 end
 
 local function zoom_step(buf, st, delta)
+  if not magick() then
+    notify("缩放需要 ImageMagick（可用 ./install.sh --with-magick 安装）", vim.log.levels.WARN)
+    return
+  end
   local idx = 1
   for i, v in ipairs(ZOOMS) do
     if math.abs(v - st.zoom) < 0.001 then
@@ -282,12 +340,13 @@ local function zoom_step(buf, st, delta)
 end
 
 local function pan(buf, st, dx, dy)
-  if st.zoom <= 1 then
-    notify("先缩放再平移（+ 放大）")
+  local plan = st.plan
+  if not plan or (plan.disp.w <= plan.canvas.w and plan.disp.h <= plan.canvas.h) then
+    notify("先放大再平移（+ 放大）")
     return
   end
-  st.px = math.max(0, math.min(1, st.px + dx))
-  st.py = math.max(0, math.min(1, st.py + dy))
+  st.px = math.max(plan.px_lo, math.min(plan.px_hi, st.px + dx))
+  st.py = math.max(plan.py_lo, math.min(plan.py_hi, st.py + dy))
   render(buf, st)
 end
 
@@ -324,99 +383,6 @@ local function fetch_pages(buf, st)
   end)
 end
 
--- ── 预览浮窗 ─────────────────────────────────────────
-
-local function layout(st)
-  if not (st.win and vim.api.nvim_win_is_valid(st.win)) then
-    return
-  end
-  local cols, lines = vim.o.columns, vim.o.lines
-  local w = math.max(20, math.floor(cols * FLOAT_RATIO))
-  local h = math.max(6, math.floor(lines * FLOAT_RATIO))
-  local row = math.max(0, math.floor((lines - h) / 2) - 1)
-  local col = math.max(0, math.floor((cols - w) / 2))
-  pcall(vim.api.nvim_win_set_config, st.win, {
-    relative = "editor",
-    style = "minimal",
-    width = w,
-    height = h,
-    row = row,
-    col = col,
-    border = "rounded",
-    title = float_title(st),
-    title_pos = "center",
-  })
-end
-
---- 在居中浮窗中预览图片；原窗口内容保持不变（同一 buffer 只在一个窗口展示）
-function M.preview(buf)
-  local st = state(buf)
-  if st.win and vim.api.nvim_win_is_valid(st.win) then
-    vim.api.nvim_set_current_win(st.win)
-    return
-  end
-  local home = vim.api.nvim_get_current_win()
-  if vim.api.nvim_win_get_config(home).relative ~= "" then
-    return
-  end
-  local prev = vim.fn.bufnr("#")
-  st.home = home
-
-  local cols, lines = vim.o.columns, vim.o.lines
-  local w = math.max(20, math.floor(cols * FLOAT_RATIO))
-  local h = math.max(6, math.floor(lines * FLOAT_RATIO))
-  st.win = vim.api.nvim_open_win(buf, true, {
-    relative = "editor",
-    style = "minimal",
-    width = w,
-    height = h,
-    row = math.max(0, math.floor((lines - h) / 2) - 1),
-    col = math.max(0, math.floor((cols - w) / 2)),
-    border = "rounded",
-    title = float_title(st),
-    title_pos = "center",
-    zindex = 40,
-  })
-  vim.w[st.win].nvkit_no_dim = true
-  vim.wo[st.win].winhighlight = ""
-  vim.api.nvim_create_autocmd("WinClosed", {
-    pattern = tostring(st.win),
-    once = true,
-    callback = function()
-      vim.schedule(function()
-        st.win = nil
-      end)
-    end,
-  })
-
-  -- 原窗口换回之前的 buffer（避免同一 buffer 在两处渲染出两份图片）
-  if prev > 0 and prev ~= buf and vim.api.nvim_buf_is_valid(prev) and vim.bo[prev].buftype == "" then
-    vim.api.nvim_win_set_buf(home, prev)
-  else
-    vim.api.nvim_set_current_win(home)
-    pcall(function()
-      require("nvim-devkit.winbuf").open_dashboard()
-    end)
-    vim.api.nvim_set_current_win(st.win)
-  end
-
-  pcall(render, buf, st)
-end
-
---- 关闭预览（wipe=true 时同时删除图片 buffer）
-function M.close(buf, wipe)
-  local st = states[buf]
-  if st and st.win and vim.api.nvim_win_is_valid(st.win) then
-    pcall(vim.api.nvim_win_close, st.win, true)
-    st.win = nil
-  end
-  if wipe and vim.api.nvim_buf_is_valid(buf) then
-    pcall(vim.api.nvim_buf_delete, buf, { force = true })
-  end
-end
-
--- ── 键位 ─────────────────────────────────────────────
-
 local did_setup = false
 local function setup()
   if did_setup then
@@ -426,14 +392,33 @@ local function setup()
   vim.api.nvim_create_autocmd("VimResized", {
     group = vim.api.nvim_create_augroup("nvim_devkit_viewer", { clear = true }),
     callback = function()
-      for _, st in pairs(states) do
-        layout(st)
+      for buf, st in pairs(states) do
+        if vim.api.nvim_buf_is_valid(buf) and st.placement and not st.placement.closed then
+          vim.schedule(function()
+            if states[buf] == st then
+              render(buf, st)
+            end
+          end)
+        end
       end
     end,
   })
 end
 
---- 为 ft=image 的 buffer 安装查看器（键位 + 预览浮窗），幂等
+--- 关闭查看（wipe=true 时删除图片 buffer）
+function M.close(buf, wipe)
+  local st = states[buf]
+  if st and st.placement and not st.placement.closed then
+    pcall(function()
+      st.placement:close()
+    end)
+  end
+  if wipe and vim.api.nvim_buf_is_valid(buf) then
+    pcall(vim.api.nvim_buf_delete, buf, { force = true })
+  end
+end
+
+--- 为 ft=image 的 buffer 安装查看器（键位 + 等比渲染），幂等
 function M.attach(buf)
   setup()
   if not vim.b[buf].nvkit_viewer_keys then
@@ -454,7 +439,7 @@ function M.attach(buf)
 
     map("q", function()
       M.close(buf, true)
-    end, "关闭预览")
+    end, "关闭图片")
     map("+", function()
       zoom_step(buf, st, 1)
     end, "放大")
@@ -500,15 +485,7 @@ function M.attach(buf)
         page(buf, st, -1)
       end, "上一页")
       map("<leader>rt", function()
-        local home = st.home
-        M.close(buf, false)
-        if home and vim.api.nvim_win_is_valid(home) then
-          vim.api.nvim_set_current_win(home)
-        end
         require("nvim-devkit.pdf").open(st.src)
-        if vim.api.nvim_buf_is_valid(buf) then
-          pcall(vim.api.nvim_buf_delete, buf, { force = true })
-        end
       end, "切换到文本模式")
     else
       map("<ScrollWheelDown>", function()
@@ -519,7 +496,7 @@ function M.attach(buf)
       end, "放大")
     end
   end
-  M.preview(buf)
+  pcall(render, buf, state(buf))
 end
 
 return M
