@@ -176,7 +176,7 @@
 | 更新后坏了 | `git -C ~/nvim-devkit log --oneline -5` → `git checkout <旧提交> -- config/` → 重跑 `install.sh --update` |
 | 分屏分不清 / 压暗不够 | 增强已默认开启：`:NvkitSplits` 开关；调强度 `:lua local t=require("nvim-devkit.theme"); t.options.fg_fade=0.7; t.options.bg_fade=0.5; t.dim_inactive(false); t.dim_inactive(true)`（数值 0~1，越大越明显） |
 | WezTerm 按 `Ctrl+Shift+=` 变放大页面 | WezTerm 默认占用该键调字号，按键到不了 nvim；按下方说明释放默认键（或转发 `F13`） |
-| 滚轮缩放把 WezTerm 弄崩 | WezTerm 已知 bug（wezterm#7953）：kitty 图片每次重定位（a=p）会重复累积图片附件，叠加滚动时 quad 数爆炸（千万级）→ 分配失败 panic。本发行版已把滚轮合并为"停下后一次渲染"、并停用旧 placement 的冗余更新，大幅降低触发率。若仍崩：`:lua vim.g.nvkit_viewer_wheel = 0`（关滚轮缩放，`+/-` 照常）并升级 WezTerm 到含修复（PR #8035）的版本 |
+| 滚轮缩放把 WezTerm 弄崩 | WezTerm 已知 bug（wezterm#7953）：kitty 图片每次重定位（a=p）会重复累积图片附件，叠加滚动时 quad 数爆炸（千万级）→ 分配失败 panic。本发行版已把滚轮合并为"停下后一次渲染"、由查看器接管图片重定位（窗口事件静默合并、旧 placement 用正确 id 删除），大幅降低触发率。若仍崩：`:lua vim.g.nvkit_viewer_wheel = 0`（关滚轮缩放，`+/-` 照常）并升级 WezTerm 到含修复（PR #8035）的版本 |
 
 **WezTerm 用户：让 `Ctrl+Shift+=` 生效**
 

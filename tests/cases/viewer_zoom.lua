@@ -196,5 +196,35 @@ do
   lib.ok("滚轮合并只通知一次", notifications == 1, "notifications=" .. tostring(notifications))
 end
 
+-- 窗口事件不再即时重定位；静默 ~0.8s 后合并一次（WezTerm #7953 防护）
+do
+  reset()
+  vim.wait(300)
+  local ap = 0
+  local orig_req = Snacks.image.terminal.request
+  Snacks.image.terminal.request = function(opts)
+    if type(opts) == "table" and opts.a == "p" then
+      ap = ap + 1
+    end
+    return orig_req(opts)
+  end
+  -- 先清空前面用例积累的通知浮窗（它们的 WinClosed 会不断作废防抖计时）
+  pcall(function()
+    require("snacks.notifier").hide()
+  end)
+  vim.wait(300)
+  local fbuf = vim.api.nvim_create_buf(false, true)
+  local win = vim.api.nvim_open_win(fbuf, false, { relative = "editor", width = 10, height = 3, row = 1, col = 1 })
+  vim.wait(150)
+  lib.ok("窗口事件不即时重定位（不再每次事件发 a=p）", ap == 0, "ap=" .. tostring(ap))
+  vim.api.nvim_win_close(win, true)
+  vim.wait(1400)
+  Snacks.image.terminal.request = orig_req
+  lib.ok("静默后合并重定位一次", ap == 1,
+    ("ap=%d token=%s valid=%s wins=%d closed=%s"):format(ap, tostring(st.replace_token),
+      tostring(vim.api.nvim_buf_is_valid(buf)), #vim.fn.win_findbuf(buf),
+      tostring(st.placement and st.placement.closed)))
+end
+
 vim.cmd("silent! %bwipeout!")
 lib.finish()

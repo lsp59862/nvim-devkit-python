@@ -123,6 +123,7 @@ local function state(buf)
     canvas_key = nil, -- 最近一次画布缓存键
     canvas_file = nil, -- 最近一次画布文件
     wheel_token = 0, -- 滚轮合并渲染令牌（显式操作会使其失效）
+    replace_token = 0, -- 窗口事件重定位令牌（静默合并，显式操作/渲染会使其失效）
   }
   states[buf] = st
   return st
@@ -192,7 +193,9 @@ local function place(buf, st, file)
 
   st.placement = snacks.placement.new(buf, file, {
     conceal = true,
-    auto_resize = true,
+    -- 不挂 snacks 的 auto_resize（它在任何 WinNew/WinClosed/WinEnter 都会重定位发 a=p）；
+    -- 改由本模块"静默合并"策略触发（schedule_replace），把 a=p 收敛到用户停手后一次
+    auto_resize = false,
     on_update_pre = function(p)
       if p.closed then
         return
@@ -211,6 +214,13 @@ local function place(buf, st, file)
       -- 立刻停掉旧 placement 的自动更新（防止其继续发 a=p 加剧 WezTerm #7953 的附件累积）
       pcall(vim.api.nvim_del_augroup_by_id, old.augroup)
       vim.defer_fn(function()
+        -- snacks 的 Image:del 把 ipairs 下标当 placement id 发送（永远发 p=1），
+        -- WezTerm 按 (image_id, placement_id) 匹配时会找不到真实 placement → 单元格里的
+        -- 图片附件不会被摘下（逐次累积成 quad 爆炸）。这里用正确 id 显式删除一次。
+        local ok_term, terminal = pcall(require, "snacks.image.terminal")
+        if ok_term and terminal and old.img then
+          pcall(terminal.request, { a = "d", d = "i", i = old.img.id, p = old.id })
+        end
         pcall(function()
           old:close()
         end)
@@ -225,6 +235,7 @@ local function render(buf, st)
     return
   end
   st.gen = st.gen + 1
+  st.replace_token = (st.replace_token or 0) + 1 -- 新渲染接管，作废挂起的静默重定位
   local gen = st.gen
   local snacks = require("snacks.image")
   local ok_img, img = pcall(snacks.image.new, source_file(st))
@@ -321,6 +332,36 @@ end
 --- 使挂起的滚轮合并渲染失效（显式操作立即生效且不重复渲染）
 local function cancel_wheel(st)
   st.wheel_token = (st.wheel_token or 0) + 1
+end
+
+-- 窗口事件（浮窗开关/分屏/切换）静默多久后合并一次重定位。
+-- WezTerm ≤ 未合并 PR #8035 的版本里，重定位（a=p）与滚动 interplay 会重复累积图片
+-- 附件（wezterm#7953）→ quad 爆炸崩溃；因此不做"每次事件都重定位"，而是静默后一次。
+local REPLACE_MS = 800
+
+--- 静默合并重定位：窗口事件落定后对当前画布重新放置一次（仅一次 a=p）
+local function schedule_replace(buf, st)
+  st.replace_token = (st.replace_token or 0) + 1
+  local token = st.replace_token
+  vim.defer_fn(function()
+    if st.replace_token ~= token or not vim.api.nvim_buf_is_valid(buf) or states[buf] ~= st then
+      return
+    end
+    local p = st.placement
+    if not (p and not p.closed and p:ready()) or #vim.fn.win_findbuf(buf) == 0 then
+      return
+    end
+    -- snacks 的 update 在状态未变时直接 return（不发 a=p）；这里清掉缓存强制重贴一次
+    p._state = nil
+    pcall(function()
+      p:update()
+    end)
+  end, REPLACE_MS)
+end
+
+--- 作废挂起的静默重定位（显式操作/新渲染/关闭接管）
+local function cancel_replace(st)
+  st.replace_token = (st.replace_token or 0) + 1
 end
 
 --- 阶梯档位下标（最接近当前 zoom 的档）
@@ -477,6 +518,7 @@ function M.close(buf, wipe)
   local st = states[buf]
   if st then
     cancel_wheel(st)
+    cancel_replace(st)
   end
   if st and st.placement and not st.placement.closed then
     pcall(function()
@@ -493,14 +535,32 @@ function M.attach(buf)
   setup()
   if not vim.b[buf].nvkit_viewer_keys then
     vim.b[buf].nvkit_viewer_keys = true
+    local st = state(buf)
+    local aug = vim.api.nvim_create_augroup("nvim_devkit_viewer_replace_" .. buf, { clear = true })
     vim.api.nvim_create_autocmd("BufWipeout", {
       buffer = buf,
       once = true,
       callback = function()
         states[buf] = nil
+        pcall(vim.api.nvim_del_augroup_by_id, aug)
       end,
     })
-    local st = state(buf)
+    -- 自己接管重定位触发（auto_resize=false）：窗口事件静默合并为一次 a=p
+    vim.api.nvim_create_autocmd({ "BufWinEnter", "BufEnter" }, {
+      group = aug,
+      buffer = buf,
+      callback = function()
+        schedule_replace(buf, st)
+      end,
+    })
+    vim.api.nvim_create_autocmd({ "WinEnter", "WinClosed", "WinNew", "WinResized" }, {
+      group = aug,
+      callback = function()
+        if vim.api.nvim_buf_is_valid(buf) and #vim.fn.win_findbuf(buf) > 0 then
+          schedule_replace(buf, st)
+        end
+      end,
+    })
     fetch_pages(buf, st)
 
     local function map(lhs, fn, desc)
