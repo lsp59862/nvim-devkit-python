@@ -145,6 +145,36 @@ else
   lib.ok("单元格尺寸手动兜底（需要 ImageMagick，跳过）", true, "optional")
 end
 
+-- 终端不上报像素尺寸（cell=0）时用默认 9×18 估算继续画布模式
+if vim.fn.executable("magick") == 1 then
+  lib.reset()
+  local term = require("snacks.image").terminal.size()
+  local ow, oh = term.cell_width, term.cell_height
+  term.cell_width, term.cell_height = 0, 0
+  do
+    local f = assert(io.open(img, "wb"))
+    f:write(vim.base64.decode(png_b64))
+    f:close()
+  end
+  vim.cmd("edit " .. vim.fn.fnameescape(img))
+  vim.bo.filetype = "image"
+  local zst = viewer.state(vim.api.nvim_get_current_buf())
+  vim.wait(1500, function()
+    return zst and zst.canvas_file ~= nil
+  end, 50)
+  local W = vim.api.nvim_win_get_width(0)
+  local H = vim.api.nvim_win_get_height(0)
+  local okd, dims = pcall(require("snacks.image").util.dim, zst.canvas_file)
+  term.cell_width, term.cell_height = ow, oh
+  lib.ok("终端未上报像素尺寸时按默认 9×18 继续画布模式",
+    zst.canvas_file ~= nil and okd and dims.width == math.floor(W * 9) + 1 and dims.height == math.floor(H * 18) + 1,
+    ("canvas=%s dims=%s expect=%dx%d"):format(tostring(zst.canvas_file),
+      okd and ("%dx%d"):format(dims.width, dims.height) or "?",
+      math.floor(W * 9) + 1, math.floor(H * 18) + 1))
+else
+  lib.ok("终端未上报像素尺寸默认估算（需要 ImageMagick，跳过）", true, "optional")
+end
+
 -- 环境缺 ImageMagick 时的降级：普通放置（左上角）、缩放不生效且不重建 placement
 lib.reset()
 local old_path = vim.env.PATH

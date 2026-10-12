@@ -121,8 +121,9 @@ LUAEOF
 if [[ -t 0 && -t 1 ]]; then
   MODE=tui
   echo "（真实终端模式：会闪现一张测试图，约 5 秒后自动退出）"
+  # 注意：不能把 stdout 接管道——那样 nvim 拿不到真实终端尺寸（cell 会变成默认值）
   NVIM_APPNAME=nvim-devkit NVIM_DEVKIT_DOCTOR_MODE="$MODE" NVIM_DEVKIT_DOCTOR_OUT="$OUT" \
-    timeout 30 "$NVIM_BIN" -c "luafile $LUA" 2>&1 | tail -3
+    timeout 30 "$NVIM_BIN" -c "luafile $LUA"
 else
   MODE=headless
   NVIM_APPNAME=nvim-devkit NVIM_DEVKIT_DOCTOR_MODE="$MODE" NVIM_DEVKIT_DOCTOR_OUT="$OUT" \

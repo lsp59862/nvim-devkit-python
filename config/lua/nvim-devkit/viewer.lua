@@ -142,29 +142,36 @@ local function source_file(st)
   return st.src
 end
 
+--- 显示该 buffer 的窗口格数（多窗取最小；未显示时给合理估计）
+local function view_dims(buf)
+  local W, H = vim.o.columns, vim.o.lines
+  local wins = vim.fn.win_findbuf(buf)
+  if #wins == 0 then
+    return W, math.max(1, H - 2)
+  end
+  for _, win in ipairs(wins) do
+    W = math.min(W, vim.api.nvim_win_get_width(win))
+    H = math.min(H, vim.api.nvim_win_get_height(win))
+  end
+  return W, H
+end
+
 --- 画布几何：窗口格数 + 单元格像素 → 画布像素
---- 画布比"格数×单元格像素"多 1px，确保 snacks 的 fit 判定走"整数格子"分支
+--- 画布比"格数×单元格像素"多 1px，确保 snacks 的 fit 判定走"整数格子"分支。
+--- SSH 等场景终端可能不上报像素尺寸（cell=0）：用默认 9×18 估算继续画布模式
+--- （缩放/平移/居中全部可用，宽高比误差约 4%；可用 vim.g.nvkit_viewer_cell_w/_h 精调）
 local function canvas_geom(buf)
   local term = require("snacks.image").terminal.size()
   local cw, ch = term.cell_width, term.cell_height
-  -- SSH 等场景终端可能不上报像素尺寸：允许手动兜底
-  -- vim.g.nvkit_viewer_cell_w / _h（例如 8 / 17）
   local gw, gh = tonumber(vim.g.nvkit_viewer_cell_w), tonumber(vim.g.nvkit_viewer_cell_h)
   if gw and gh and gw > 0 and gh > 0 then
     cw, ch = gw, gh
+  elseif not (cw and ch and cw > 0 and ch > 0) then
+    cw, ch = 9, 18
   end
-  if not (cw and ch and cw > 0 and ch > 0) then
+  local W, H = view_dims(buf)
+  if not W then
     return
-  end
-  local W, H = vim.o.columns, vim.o.lines
-  local wins = vim.fn.win_findbuf(buf)
-  if #wins > 0 then
-    for _, win in ipairs(wins) do
-      W = math.min(W, vim.api.nvim_win_get_width(win))
-      H = math.min(H, vim.api.nvim_win_get_height(win))
-    end
-  else
-    H = math.max(1, H - 2)
   end
   return W, H, math.floor(W * cw) + 1, math.floor(H * ch) + 1
 end
@@ -349,15 +356,10 @@ local function cancel_wheel(st)
 end
 
 --- 缩放前置环境检查：不满足时给出可操作提示并返回 true
-local function zoom_blocked(buf)
+local function zoom_blocked()
   if not magick() then
     notify("缩放需要 ImageMagick（可用 ./install.sh --with-magick 安装；" ..
       "或用 ~/.local/bin/nvim-devkit 启动以带上工具 PATH）", vim.log.levels.WARN)
-    return true
-  end
-  if not (canvas_geom(buf)) then
-    notify("缩放不可用：终端未上报单元格像素尺寸（SSH 建议 wezterm ssh；" ..
-      "或用 :lua vim.g.nvkit_viewer_cell_w=8 vim.g.nvkit_viewer_cell_h=17 手动指定）", vim.log.levels.WARN)
     return true
   end
   return false
@@ -458,7 +460,7 @@ local function set_zoom(buf, st, zoom)
 end
 
 local function zoom_step(buf, st, delta)
-  if zoom_blocked(buf) then
+  if zoom_blocked() then
     return
   end
   local idx = ladder_index(st.zoom)
@@ -481,7 +483,7 @@ end
 local WHEEL_MS = 140
 
 local function wheel_zoom(buf, st, delta)
-  if zoom_blocked(buf) then
+  if zoom_blocked() then
     return
   end
   local idx = ladder_index(st.zoom)
@@ -719,9 +721,6 @@ function M.attach(buf)
     if not magick() then
       notify("未安装 ImageMagick：图片按原始布局显示、缩放暂不可用（./install.sh --with-magick 可安装）",
         vim.log.levels.WARN)
-    elseif not (canvas_geom(buf)) then
-      notify("终端未上报单元格像素尺寸：缩放暂不可用（SSH 建议 wezterm ssh；" ..
-        "或用 :lua vim.g.nvkit_viewer_cell_w=8 vim.g.nvkit_viewer_cell_h=17 手动指定）", vim.log.levels.WARN)
     end
   end
 end

@@ -26,7 +26,7 @@ cd ~/nvim-devkit
 - nvim 可执行文件查找顺序：`NVIM_DEVKIT_BIN` 环境变量 → `~/.local/share/nvim-devkit/nvim/bin/nvim` → PATH 中的 `nvim`
 - 失败时完整日志留在 `/tmp/nvim-devkit-tests/log-<用例>.txt`
 
-## 覆盖范围（35 个用例 / 206 项断言）
+## 覆盖范围（35 个用例 / 207 项断言）
 
 | 用例 | 覆盖行为 |
 | --- | --- |
@@ -57,7 +57,7 @@ cd ~/nvim-devkit
 | `opencode_keys` | opencode 插件 1.x 公开 API 存在性（`ask/select/prompt/operator`，无 `toggle`）· `<leader>ot` 映射存在（n/t）· stub 验证调用 `snacks.terminal.toggle("opencode --port", 右侧面板)` |
 | `dashboard_keys` | 启动页按键契约：`r` = 恢复会话（persistence.load）· `q` = `:q`（防回退到 snacks 默认的 `<cmd>bd`）· buffer 内映射存在 |
 | `explorer_all_files` | 文件树默认显示所有文件：被 `.gitignore` 忽略的 `result/`（ignored 标记加载后仍可见）· 点文件 · 普通文件；`explorer` 与 `files` 数据源默认 `hidden+ignored` |
-| `viewer_keys` | 查看器：等比缩放纯函数 `_plan`（z=1 整图居中 / 2x 中心取景 / 平移夹紧 / z<1 整图缩小居中 / 正方形图 x/y 等比系数一致）· 渲染命令 `_render_cmd` 结构（透明画布+裁剪+缩放+按落点合成）· pdfinfo 页数解析 · `ft=image` 在普通窗口显示（无浮窗、不额外开窗）并安装图片键位（q/±/0/滚轮/hjkl，无翻页）· `q` 关闭并删除 buffer · PDF 键位（`]p/[p`、滚轮翻页、`<leader>rt` 切文本）· 逃生阀（`vim.g.nvkit_viewer_wheel=0` 时滚轮为空操作、不缩放不渲染）· 环境降级（PATH 无 ImageMagick 时普通放置源图、缩放不生效且不重建 placement） |
+| `viewer_keys` | 查看器：等比缩放纯函数 `_plan`（z=1 整图居中 / 2x 中心取景 / 平移夹紧 / z<1 整图缩小居中 / 正方形图 x/y 等比系数一致）· 渲染命令 `_render_cmd` 结构（透明画布+裁剪+缩放+按落点合成）· pdfinfo 页数解析 · `ft=image` 在普通窗口显示（无浮窗、不额外开窗）并安装图片键位（q/±/0/滚轮/hjkl，无翻页）· `q` 关闭并删除 buffer · PDF 键位（`]p/[p`、滚轮翻页、`<leader>rt` 切文本）· 逃生阀（`vim.g.nvkit_viewer_wheel=0` 时滚轮为空操作、不缩放不渲染）· 环境降级（PATH 无 ImageMagick 时普通放置源图、缩放不生效且不重建 placement）· 单元格尺寸兜底（终端未上报像素尺寸时按默认 9×18 估算继续画布模式；`vim.g.nvkit_viewer_cell_w/_h` 手动指定） |
 | `viewer_zoom` | 查看器真实缩放路径（等比画布）：z=1 画布=窗口像素（placed 尺寸精确、loc=窗口整数格）· 放大后仍为窗口画布且 x/y 缩放系数一致 · 0.75/0.5 档整图缩小且长宽相等、居中 · 平移改变取景中心 · `0` 复位 · 换图时旧 placement 延迟撤销（防闪烁）· 旧 placement 自动更新即时停用 · 重复复位幂等（不重建 placement）· 滚轮连拨合并为一次渲染（图片变化不再发通知）· 窗口事件不即时重定位、静默后合并重贴一次（查看器接管 auto_resize，防 WezTerm #7953 的 a=p 风暴）· UI 浮窗自动避让（浮窗出现时图片隐藏、CmdlineEnter/Leave 隐藏/恢复、界面清空后合并重贴）（无 ImageMagick 时跳过） |
 | `winbuf_exit_dashboard` | 退出类：dashboard 上 `:q` → 退出 nvim |
 | `winbuf_exit_command` | 退出类：`:exit` 有无未保存修改都直接退出 |
