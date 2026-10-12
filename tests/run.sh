@@ -24,6 +24,15 @@ if [[ -z "$NVIM_BIN" ]]; then
   fi
 fi
 
+# ── 与启动器一致的 PATH（conda 里的 ImageMagick 等工具）─────
+CONDA_BASE="${CONDA_PREFIX%/envs/*}"
+for base in "$CONDA_BASE" "$HOME/anaconda3" "$HOME/miniconda3" "/data/lsp/anaconda3"; do
+  if [[ -n "$base" && -d "$base/envs/nvim-devkit-tools/bin" ]]; then
+    export PATH="$base/envs/nvim-devkit-tools/bin:$PATH"
+    break
+  fi
+done
+
 # ── 用仓库 config，不动本机安装 ─────────────────────────────
 rm -rf "$WORK"
 mkdir -p "$WORK/xdg-config"
@@ -110,6 +119,7 @@ run_case tutor 0
 run_case completion_keys 0
 run_case explorer_all_files 0
 run_case viewer_keys 0
+run_case viewer_zoom 0
 run_case winbuf_exit_dashboard 1
 run_case winbuf_exit_command 1
 

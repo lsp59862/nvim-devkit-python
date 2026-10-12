@@ -46,8 +46,10 @@ function M._crop_cmd(cmd, src, out, geom)
   return { cmd, src, "-crop", ("%dx%d+%d+%d"):format(geom.w, geom.h, geom.x, geom.y), "+repage", out }
 end
 
+--- 查看器状态按 buffer 存在模块内（放 vim.b 会被转成 VimL dict，读回是副本）
+local states = {} ---@type table<number, table>
 local function state(buf)
-  local st = vim.b[buf].nvkit_viewer
+  local st = states[buf]
   if st then
     return st
   end
@@ -63,8 +65,13 @@ local function state(buf)
     pages = nil,
     gen = 0,
   }
-  vim.b[buf].nvkit_viewer = st
+  states[buf] = st
   return st
+end
+
+--- 查看器状态（测试/调试用）
+function M.state(buf)
+  return states[buf]
 end
 
 local function source_file(st)
@@ -91,7 +98,7 @@ local function render(buf, st)
   st.gen = st.gen + 1
   local gen = st.gen
   local snacks = require("snacks.image")
-  local img = snacks.image.image.new(source_file(st))
+  local img = snacks.image.new(source_file(st))
   local base = img.file
 
   if st.zoom <= 1 then
@@ -230,6 +237,13 @@ function M.attach(buf)
     return
   end
   vim.b[buf].nvkit_viewer_keys = true
+  vim.api.nvim_create_autocmd("BufWipeout", {
+    buffer = buf,
+    once = true,
+    callback = function()
+      states[buf] = nil
+    end,
+  })
   local st = state(buf)
   fetch_pages(buf, st)
 
