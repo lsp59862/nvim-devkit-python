@@ -41,6 +41,27 @@ local function without_sleep(fn)
   return unpack(ret)
 end
 
+--- 同步预发送：snacks 的发送可能在"转换完成回调"里异步触发（绕过加速窗口、
+--- 且沿用逐 4KB+sleep 的慢路径）。这里在需要时同步补发（无 sleep、一次到位）。
+local function presend(file)
+  local ok, img = pcall(require("snacks.image").image.new, file)
+  if not (ok and img) or img.sent then
+    return img
+  end
+  without_sleep(function()
+    vim.wait(8000, function()
+      return img:ready() or img:failed()
+    end, 30)
+    if img:ready() and not img.sent then
+      pcall(function()
+        img:send()
+      end)
+    end
+  end)
+  return img
+end
+
+
 --- 等比缩放渲染方案（纯函数，供测试）
 --- 整图以 s = s0*zoom 的缩放绘制在 canvas 上，画布即窗口像素尺寸；
 --- 返回原图取景裁剪、缩放目标、在画布上的落点（全部整数，供 magick 使用）
@@ -96,6 +117,69 @@ function M._plan(iw, ih, pw, ph, zoom, px, py)
   }
 end
 
+--- 视口方案（纯函数，供测试）：
+--- zoom>=1：源矩形模式——图片只传输一次，平移/缩放仅发"源矩形放置"请求（x/y/w/h + c/r）；
+---         补边画布 = zoom=1 的视口（源像素坐标），内容居中，透明补边保证任何平移不越界；
+--- zoom<1：画布模式——整图缩小+居中（需要补边空间，走 magick 烘焙一次并缓存）。
+function M._view(iw, ih, W, H, pw, ph, zoom, px, py)
+  zoom = zoom or 1
+  local s0 = math.min(pw / iw, ph / ih, 1)
+  if zoom < 1 then
+    local plan = M._plan(iw, ih, pw, ph, zoom, px, py)
+    return {
+      mode = "canvas",
+      plan = plan,
+      px = plan.px,
+      py = plan.py,
+      px_lo = plan.px_lo,
+      px_hi = plan.px_hi,
+      py_lo = plan.py_lo,
+      py_hi = plan.py_hi,
+      disp = plan.disp,
+      canvas = plan.canvas,
+      s0 = plan.s0,
+      s = plan.s,
+    }
+  end
+  local Pw = math.max(iw, math.floor(pw / s0 + 0.5))
+  local Ph = math.max(ih, math.floor(ph / s0 + 0.5))
+  local ox = math.floor((Pw - iw) / 2)
+  local oy = math.floor((Ph - ih) / 2)
+  local s = s0 * zoom
+  local dw, dh = iw * s, ih * s
+  local function clamp_axis(p, disp, canvas)
+    if disp <= canvas then
+      return 0.5, 0.5, 0.5
+    end
+    local lo = canvas / (2 * disp)
+    return math.max(lo, math.min(1 - lo, p or 0.5)), lo, 1 - lo
+  end
+  local cx, px_lo, px_hi = clamp_axis(px, dw, pw)
+  local cy, py_lo, py_hi = clamp_axis(py, dh, ph)
+  local rw = math.max(1, math.floor(pw / s + 0.5))
+  local rh = math.max(1, math.floor(ph / s + 0.5))
+  local center_x = ox + cx * iw
+  local center_y = oy + cy * ih
+  local x = math.max(0, math.min(Pw - rw, math.floor(center_x - rw / 2 + 0.5)))
+  local y = math.max(0, math.min(Ph - rh, math.floor(center_y - rh / 2 + 0.5)))
+  return {
+    mode = "rect",
+    s0 = s0,
+    s = s,
+    pad = { w = Pw, h = Ph, ox = ox, oy = oy },
+    rect = { x = x, y = y, w = rw, h = rh },
+    cells = { w = W, h = H },
+    px = cx,
+    py = cy,
+    px_lo = px_lo,
+    px_hi = px_hi,
+    py_lo = py_lo,
+    py_hi = py_hi,
+    disp = { w = dw, h = dh },
+    canvas = { w = pw, h = ph },
+  }
+end
+
 --- 构造渲染命令（纯函数，供测试）：
 --- 透明画布 + 裁剪原图 + 等比缩放 + 按落点合成（不用 -extent，其偏移语义反直觉）
 function M._render_cmd(cmd, src, out, plan)
@@ -141,6 +225,11 @@ local function state(buf)
     wheel_token = 0, -- 滚轮合并渲染令牌（显式操作会使其失效）
     replace_token = 0, -- 窗口事件重定位令牌（静默合并，显式操作/渲染会使其失效）
     image_hidden = false, -- 因 UI 浮窗（命令行/消息/通知）暂时隐藏中
+    view = nil, -- 当前视口方案（_view 的结果）
+    img = nil, -- 当前发送/放置的图片对象（snacks Image）
+    pid = nil, -- 查看器自己的 placement id
+    last_id = nil, -- 上一张图的 image id（换图时清理其 placement）
+    last_file = nil, -- 上一张图文件（换图判断）
   }
   states[buf] = st
   return st
@@ -189,7 +278,7 @@ local function canvas_geom(buf)
   if not W then
     return
   end
-  return W, H, math.floor(W * cw) + 1, math.floor(H * ch) + 1
+  return W, H, cw, ch
 end
 
 local function plan_key(base, plan)
@@ -244,6 +333,16 @@ local function place_impl(buf, st, file)
   if st.placement then
     olds[#olds + 1] = st.placement
   end
+  -- 从源矩形模式切换过来：删除查看器自己的旧放置（数据保留）
+  if st.img and st.pid then
+    local ok_t, terminal = pcall(require, "snacks.image.terminal")
+    if ok_t then
+      pcall(terminal.request, { a = "d", d = "i", i = st.img.id, p = st.pid })
+    end
+    st.img = nil
+    st.last_id = nil
+    st.last_file = nil
+  end
   -- 把 snacks 初次挂载的 placement（仅本 buffer）也一起纳入延迟清理
   local ok_img, img = without_sleep(function()
     return snacks.image.new(source_file(st))
@@ -257,6 +356,7 @@ local function place_impl(buf, st, file)
   end
 
   st.image_hidden = false
+  presend(file) -- 画布图片先同步发送（避免 placement 内部的异步慢发送）
   local ok_p, newp = without_sleep(function()
     return snacks.placement.new(buf, file, {
       conceal = true,
@@ -300,6 +400,115 @@ local function place(buf, st, file)
   end
 end
 
+--- 把光标放到窗口左上角（与 snacks render_fallback 相同规则；0 号是"从 editor 顶部起算"的偏移）
+local function position_cursor(buf)
+  local wins = vim.fn.win_findbuf(buf)
+  if #wins == 0 then
+    return
+  end
+  local ok, terminal = pcall(require, "snacks.image.terminal")
+  if not ok then
+    return
+  end
+  local pos = vim.api.nvim_win_get_position(wins[1])
+  local Snacks = require("snacks")
+  if
+    (Snacks.config.styles.snacks_image.relative ~= "editor")
+    and ((vim.o.showtabline == 2) or (vim.o.showtabline == 1 and vim.fn.tabpagenr("$") > 1))
+  then
+    terminal.set_cursor({ pos[1], pos[2] })
+  else
+    terminal.set_cursor({ pos[1] + 1, pos[2] })
+  end
+end
+
+--- 确保 file 对应的图片对象存在（同步预发送，避免异步慢发送）
+local function ensure_image(st, file)
+  if st.img and st.img.file == file and st.img.sent then
+    return st.img
+  end
+  local img = presend(file)
+  if img then
+    st.img = img
+    return img
+  end
+end
+
+local pid_seq = 1000
+
+--- 源矩形模式：图片只传一次，平移/缩放仅发放置请求（极廉价）；补边画布按需烘焙并缓存
+local function draw_rect(buf, st, base, view, W, H)
+  local dims = st.src_dims
+  local need_pad = view.pad.w > dims.width or view.pad.h > dims.height
+  local file = base
+  if need_pad then
+    if not magick() then
+      place(buf, st, base) -- 无 magick 无法补边：退回普通放置（降级）
+      st.view = nil
+      return
+    end
+    local key = vim.fn.sha256(("%s|pad|%dx%d"):format(base, view.pad.w, view.pad.h)):sub(1, 16)
+    file = ("%s/%s.png"):format(cache_dir(), key)
+    if vim.fn.filereadable(file) == 0 then
+      local res = vim.system({
+        magick(),
+        base,
+        "-background", "none",
+        "-gravity", "center",
+        "-extent", ("%dx%d"):format(view.pad.w, view.pad.h),
+        "+repage",
+        "-strip",
+        "-define", "png:compression-level=1",
+        file,
+      }, { text = true }):wait(30000)
+      if res.code ~= 0 then
+        notify("补边失败：" .. vim.trim(res.stderr or "unknown"), vim.log.levels.WARN)
+        place(buf, st, base)
+        st.view = nil
+        return
+      end
+    end
+  end
+
+  local img = ensure_image(st, file)
+  if not img then
+    return
+  end
+  local ok_term, terminal = pcall(require, "snacks.image.terminal")
+  if not ok_term then
+    return
+  end
+  -- 从画布/降级模式切换过来：关闭 snacks 的 placement
+  if st.placement and not st.placement.closed then
+    close_placement(st.placement)
+  end
+  st.placement = nil
+  -- 换图：清理上一张图的 placement
+  if st.last_id and st.last_file ~= file then
+    pcall(terminal.request, { a = "d", d = "i", i = st.last_id, p = st.pid })
+  end
+  st.pid = st.pid or (pid_seq + buf)
+  st.last_id = img.id
+  st.last_file = file
+  st.canvas_file = file
+
+  position_cursor(buf)
+  pcall(terminal.request, {
+    a = "p",
+    i = img.id,
+    p = st.pid,
+    x = view.rect.x,
+    y = view.rect.y,
+    w = view.rect.w,
+    h = view.rect.h,
+    c = W,
+    r = H,
+    C = 1,
+    q = 2,
+  })
+  st.image_hidden = false
+end
+
 --- 渲染当前状态：等比缩放绘制到窗口画布
 local function render(buf, st)
   if not vim.api.nvim_buf_is_valid(buf) then
@@ -325,7 +534,7 @@ local function render(buf, st)
   end
   st.src_dims = dims
 
-  local okgeom, W, H, pw, ph = pcall(canvas_geom, buf)
+  local okgeom, W, H, cw, ch = pcall(canvas_geom, buf)
   local cmd = magick()
   if not (okgeom and W and cmd) then
     -- 无 ImageMagick / 无单元格像素信息：退化为普通放置（左上角、不可缩放）。
@@ -336,12 +545,23 @@ local function render(buf, st)
     end
     place(buf, st, base)
     if okgeom and W then
-      st.plan = M._plan(dims.width, dims.height, pw, ph, st.zoom, st.px, st.py)
+      st.plan = M._plan(dims.width, dims.height, math.floor(W * cw) + 1, math.floor(H * ch) + 1,
+        st.zoom, st.px, st.py)
       st.canvas_key = plan_key(base, st.plan)
     end
     return
   end
 
+  -- 视口方案：zoom>=1 → 源矩形模式（一次传输 + 廉价放置，精确像素）；zoom<1 → 画布模式
+  local view = M._view(dims.width, dims.height, W, H, W * cw, H * ch, st.zoom, st.px, st.py)
+  st.view = view
+  st.px, st.py = view.px, view.py
+  if view.mode == "rect" then
+    return draw_rect(buf, st, base, view, W, H)
+  end
+
+  -- 画布模式沿用"多 1px 走整数格"的技巧
+  local pw, ph = math.floor(W * cw) + 1, math.floor(H * ch) + 1
   local plan = M._plan(dims.width, dims.height, pw, ph, st.zoom, st.px, st.py)
   st.plan = plan
   st.px, st.py = plan.px, plan.py
@@ -394,11 +614,12 @@ function M._ensure_canvas(buf, st, p)
   if not st.src_dims then
     return
   end
-  local okgeom, W, H, pw, ph = pcall(canvas_geom, buf)
+  local okgeom, W, H, cw, ch = pcall(canvas_geom, buf)
   if not (okgeom and W) then
     return
   end
-  local plan = M._plan(st.src_dims.width, st.src_dims.height, pw, ph, st.zoom, st.px, st.py)
+  local plan = M._plan(st.src_dims.width, st.src_dims.height, math.floor(W * cw) + 1, math.floor(H * ch) + 1,
+    st.zoom, st.px, st.py)
   local key = plan_key(st.src, plan)
   if key ~= st.canvas_key then
     st.canvas_key = key
@@ -450,6 +671,15 @@ local function hide_image(st)
   if st.image_hidden then
     return
   end
+  if st.img and st.pid then
+    -- 源矩形模式：删除查看器自己的 placement（数据保留，恢复时直接重放）
+    st.image_hidden = true
+    local ok, terminal = pcall(require, "snacks.image.terminal")
+    if ok then
+      pcall(terminal.request, { a = "d", d = "i", i = st.img.id, p = st.pid })
+    end
+    return
+  end
   local p = st.placement
   if p and not p.closed then
     st.image_hidden = true
@@ -467,14 +697,22 @@ local function schedule_replace(buf, st)
     if st.replace_token ~= token or not vim.api.nvim_buf_is_valid(buf) or states[buf] ~= st then
       return
     end
+    if #vim.fn.win_findbuf(buf) == 0 then
+      return
+    end
     local p = st.placement
-    if not (p and not p.closed and p:ready()) or #vim.fn.win_findbuf(buf) == 0 then
+    if not (p and not p.closed and p:ready()) and not st.img then
       return
     end
     if ui_floats_visible() then
       return -- 界面仍有浮窗（消息/通知/picker）：保持隐藏，等 WinClosed 再恢复
     end
-    -- snacks 的 update 在状态未变时直接 return（不发 a=p）；这里清掉缓存强制重贴一次
+    if st.img then
+      -- 源矩形模式：直接重放一次放置请求（极廉价，不重传图片）
+      render(buf, st)
+      return
+    end
+    -- 画布/降级模式：snacks 的 update 在状态未变时直接 return；清掉缓存强制重贴一次
     st.image_hidden = false
     p._state = nil
     pcall(function()
@@ -564,14 +802,14 @@ local function wheel_zoom(buf, st, delta)
 end
 
 local function pan(buf, st, dx, dy)
-  local plan = st.plan
-  if not plan or (plan.disp.w <= plan.canvas.w and plan.disp.h <= plan.canvas.h) then
+  local v = st.view
+  if not v or (v.disp.w <= v.canvas.w and v.disp.h <= v.canvas.h) then
     notify("先放大再平移（+ 放大）")
     return
   end
   cancel_wheel(st)
-  st.px = math.max(plan.px_lo, math.min(plan.px_hi, st.px + dx))
-  st.py = math.max(plan.py_lo, math.min(plan.py_hi, st.py + dy))
+  st.px = math.max(v.px_lo, math.min(v.px_hi, st.px + dx))
+  st.py = math.max(v.py_lo, math.min(v.py_hi, st.py + dy))
   render(buf, st)
 end
 
@@ -652,6 +890,12 @@ function M.close(buf, wipe)
   if st then
     cancel_wheel(st)
     cancel_replace(st)
+    if st.img and st.pid then
+      local ok, terminal = pcall(require, "snacks.image.terminal")
+      if ok then
+        pcall(terminal.request, { a = "d", d = "i", i = st.img.id, p = st.pid })
+      end
+    end
   end
   if st and st.placement and not st.placement.closed then
     pcall(function()

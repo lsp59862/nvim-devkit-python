@@ -1,7 +1,6 @@
--- 查看器真实缩放路径（等比画布模型）：
--- 每档缩放在"窗口像素画布"上等比重绘：=1 适应窗口居中、<1 整图缩小居中、>1 放大后平移取景。
--- 画布像素与窗口格子一一对应；画布比格子数×单元格像素多 1px，确保映射到整数格子（避免拉伸失真）。
--- 覆盖回归：曾用"裁剪+格子取整"导致各档宽高比抖动；曾双层索引崩溃；曾先清后画闪烁。
+-- 查看器缩放路径（源矩形模式 + 画布模式）：
+-- zoom>=1：图片只传输一次，平移/缩放仅发"源矩形放置"请求（x/y/w/h + c/r）→ 接近本地查看器；
+-- zoom<1：画布模式（整图缩小居中，magick 烘焙一次并缓存）。
 local lib = dofile((vim.env.NVIM_DEVKIT_TESTS or vim.fn.fnamemodify(debug.getinfo(1, "S").source:sub(2), ":p:h:h")) .. "/lib.lua")
 local Snacks = require("snacks")
 local viewer = require("nvim-devkit.viewer")
@@ -21,6 +20,7 @@ vim.system({ magick, "-size", "1200x1200", "xc:#3a7", png }):wait(10000)
 lib.ok("生成测试 PNG（1200x1200 正方形）", vim.fn.filereadable(png) == 1, png)
 
 Snacks.image.config.force = true
+local orig_sleep = vim.uv.sleep
 lib.reset()
 vim.cmd.edit(png)
 vim.wait(2000, function()
@@ -33,10 +33,11 @@ local st = viewer.state(buf)
 lib.ok("查看器状态已建立（zoom=1）", st ~= nil and st.zoom == 1,
   vim.inspect(st and { zoom = st.zoom, mode = st.mode }))
 
-local cache = vim.fn.stdpath("cache") .. "/nvim-devkit/viewer"
-local function placed()
-  return st and st.placement and st.placement.img and st.placement.img.file or nil
-end
+local W = vim.api.nvim_win_get_width(0)
+local H = vim.api.nvim_win_get_height(0)
+local term = Snacks.image.terminal.size()
+local pw, ph = W * term.cell_width, H * term.cell_height
+
 local function file_dims(file)
   local ok, dims = pcall(Snacks.image.util.dim, file)
   if ok then
@@ -44,40 +45,43 @@ local function file_dims(file)
   end
 end
 
-vim.wait(2000, function()
-  return st and st.placement and st.placement._state ~= nil
+vim.wait(3000, function()
+  return st and st.canvas_file ~= nil and st.view ~= nil
 end, 50)
 
--- 画布几何（与实现同一公式）
-local term = Snacks.image.terminal.size()
-local W = vim.api.nvim_win_get_width(0)
-local H = vim.api.nvim_win_get_height(0)
-local pw = math.floor(W * term.cell_width) + 1
-local ph = math.floor(H * term.cell_height) + 1
+-- 计数：图片传输（t=d/f）与放置（a=p）/删除（a=d）
+local transmits, places, deletes = 0, 0, 0
+local orig_req = require("snacks.image").terminal.request
+Snacks.image.terminal.request = function(opts)
+  if type(opts) == "table" then
+    if opts.t == "d" or opts.t == "f" then
+      transmits = transmits + 1
+    end
+    if opts.a == "p" then
+      places = places + 1
+    end
+    if opts.a == "d" then
+      deletes = deletes + 1
+    end
+  end
+  return orig_req(opts)
+end
 
+-- z=1：源矩形模式（一次传输 + 补边画布 + 全窗放置）
 do
-  local dw, dh = file_dims(placed())
-  lib.ok("z=1 放置窗口画布（普通窗口、cache 内 PNG、画布像素尺寸精确）",
-    vim.api.nvim_win_get_config(0).relative == "" and placed() ~= nil and placed():find(cache, 1, true) ~= nil
-      and dw == pw and dh == ph,
-    ("placed=%s dims=%dx%d expect=%dx%d"):format(tostring(placed()), dw or -1, dh or -1, pw, ph))
-end
-do
-  local loc = st.placement._state and st.placement._state.loc
-  lib.ok("画布按窗口整数格子映射（无拉伸失真前提）",
-    loc ~= nil and loc.width == W and loc.height == H,
-    ("loc=%s win=%dx%d"):format(loc and ("%sx%s"):format(loc.width, loc.height) or "nil", W, H))
-end
-do
-  local plan = st.plan
-  lib.ok("z=1 整图等比（正方形图 resize 长宽相等、无裁剪）",
-    plan ~= nil and plan.resize.w == plan.resize.h and plan.crop.w == 1200 and plan.crop.h == 1200,
-    vim.inspect(plan and { resize = plan.resize, crop = plan.crop }))
-  lib.ok("z=1 整图居中（偏移≈画布余量一半）",
-    plan ~= nil
-      and math.abs(plan.offset.x - (pw - plan.resize.w) / 2) <= 1
-      and math.abs(plan.offset.y - (ph - plan.resize.h) / 2) <= 1,
-    vim.inspect(plan and plan.offset))
+  local v = st.view
+  lib.ok("z=1 使用源矩形模式（图片只传一次）", v ~= nil and v.mode == "rect",
+    v and v.mode or "nil")
+  local dw, dh = file_dims(st.canvas_file)
+  lib.ok("补边画布尺寸 = 纯函数 pad 几何（窗口像素宽高比）",
+    v ~= nil and dw == v.pad.w and dh == v.pad.h,
+    ("dims=%sx%s pad=%dx%d"):format(tostring(dw), tostring(dh), v and v.pad.w or -1, v and v.pad.h or -1))
+  lib.ok("z=1 视口 = 整幅补边画布（居中留边、无裁剪）",
+    v ~= nil and v.rect.x == 0 and v.rect.y == 0 and v.rect.w == v.pad.w and v.rect.h == v.pad.h,
+    v and vim.inspect(v.rect) or "nil")
+  lib.ok("放置格数 = 窗口格数（等比映射前提）",
+    v ~= nil and v.cells.w == W and v.cells.h == H,
+    v and ("cells=%dx%d win=%dx%d"):format(v.cells.w, v.cells.h, W, H) or "nil")
 end
 
 local plus = vim.fn.maparg("+", "n", false, true).callback
@@ -86,87 +90,86 @@ local pan_j = vim.fn.maparg("j", "n", false, true).callback
 local reset = vim.fn.maparg("0", "n", false, true).callback
 lib.ok("缩放/平移/复位键位存在", plus ~= nil and minus ~= nil and pan_j ~= nil and reset ~= nil)
 
--- 放大：仍是窗口画布，且等比（x/y 缩放系数一致）
-local orig_sleep = vim.uv.sleep
+-- 放大：只更新源矩形，不重传图片
+local t0, p0, d0 = transmits, places, deletes
 plus()
 vim.wait(300)
-lib.ok("传输加速包装不残留（uv.sleep 已还原）", vim.uv.sleep == orig_sleep)
-lib.ok("放大后倍数生效", st.zoom > 1.0001, "zoom=" .. tostring(st.zoom))
 do
-  local dw, dh = file_dims(placed())
-  lib.ok("放大后放置的仍是窗口画布（cache 内 PNG）",
-    placed() ~= nil and placed():find(cache, 1, true) ~= nil and dw == pw and dh == ph,
-    ("placed=%s dims=%sx%s expect=%dx%d"):format(tostring(placed()), tostring(dw), tostring(dh), pw, ph))
-end
-do
-  local plan = st.plan
-  local sx = plan and plan.resize.w / plan.crop.w or 0
-  local sy = plan and plan.resize.h / plan.crop.h or 0
-  lib.ok("放大后等比（x/y 缩放系数一致）", math.abs(sx - sy) < 0.005,
-    ("sx=%.4f sy=%.4f"):format(sx, sy))
+  local v = st.view
+  lib.ok("放大后倍数生效", st.zoom == 1.25, "zoom=" .. tostring(st.zoom))
+  lib.ok("放大不重传图片（源矩形模式）", transmits == t0,
+    ("transmits=%d→%d"):format(t0, transmits))
+  lib.ok("放大只发一次放置请求", places == p0 + 1, ("places=%d→%d"):format(p0, places))
+  local exp = viewer._view(1200, 1200, W, H, pw, ph, 1.25, 0.5, 0.5)
+  lib.ok("视口与纯函数一致（x/y/w/h）",
+    v.rect.x == exp.rect.x and v.rect.y == exp.rect.y and v.rect.w == exp.rect.w and v.rect.h == exp.rect.h,
+    ("got=%s exp=%s"):format(vim.inspect(v.rect), vim.inspect(exp.rect)))
+  lib.ok("放大后矩形小于补边画布（取景放大）",
+    v.rect.w < v.pad.w or v.rect.h < v.pad.h,
+    ("rect=%dx%d pad=%dx%d"):format(v.rect.w, v.rect.h, v.pad.w, v.pad.h))
 end
 
--- 防闪烁（换图时旧的先保留，稍后再撤）
-local old_p = st.placement
-plus()
-lib.ok("换图时旧 placement 暂不关闭（先画新、后撤旧）",
-  st.placement ~= old_p and old_p.closed ~= true, ("old_closed=%s"):format(tostring(old_p.closed)))
-do
-  local ok, autocmds = pcall(vim.api.nvim_get_autocmds, { group = old_p.augroup })
-  lib.ok("旧 placement 的自动更新已即时停用（少发 a=p）",
-    not ok or #autocmds == 0, ok and ("autocmds=%d"):format(#autocmds) or "group 已删除")
-end
-vim.wait(400)
-lib.ok("旧 placement 随后被清理", old_p.closed == true, ("old_closed=%s"):format(tostring(old_p.closed)))
-
--- 平移：改变取景中心（正方形图在宽窗下沿 y 可平移）
-local py0 = st.py
+-- 平移：仅改变矩形位置（继续不重传）
+local y_before = st.view.rect.y
 pan_j()
 vim.wait(300)
-lib.ok("平移改变取景中心", st.py > py0, ("py=%.2f→%.2f"):format(py0, st.py))
+lib.ok("平移改变取景中心", st.py > 0.5, "py=" .. tostring(st.py))
+lib.ok("平移仅更新矩形位置（不重传图片）",
+  transmits == t0 and st.view.rect.y > y_before,
+  ("transmits=%d→%d y=%d→%d"):format(t0, transmits, y_before, st.view.rect.y))
 
--- 复位
+-- 复位：矩形回到整幅，仍不重传
 reset()
 vim.wait(300)
-lib.ok("复位回适应窗口", st.zoom == 1 and placed() == st.canvas_file,
-  ("zoom=%s placed=%s"):format(tostring(st.zoom), tostring(placed())))
+lib.ok("复位回适应窗口（矩形=整幅补边画布）",
+  st.zoom == 1 and st.view.rect.w == st.view.pad.w and st.view.rect.h == st.view.pad.h
+    and transmits == t0,
+  ("zoom=%s rect=%dx%d transmits=%d"):format(tostring(st.zoom), st.view.rect.w, st.view.rect.h, transmits))
 
--- 缩小到比适应窗口更小（0.75 / 0.5 档）
+-- 源矩形模式的缩放/平移全程零 a=d（只有廉价的放置请求）
+lib.ok("源矩形模式缩放/平移不删除重建（无 a=d）", deletes == d0,
+  ("deletes=%d→%d"):format(d0, deletes))
+
+-- 缩小到适应窗口以下：切画布模式（整图缩小居中，烘焙一次并缓存）
 minus()
-vim.wait(300)
+vim.wait(500)
 do
-  local plan = st.plan
-  lib.ok("缩小到 0.75（整图缩小，长宽仍相等）",
-    math.abs(st.zoom - 0.75) < 0.001 and plan ~= nil and plan.resize.w == plan.resize.h
-      and plan.resize.w < pw and plan.crop.w == 1200,
-    vim.inspect(plan and { zoom = st.zoom, resize = plan.resize, crop = plan.crop }))
+  local v = st.view
+  lib.ok("缩小到 0.75 切画布模式（整图缩小、长宽相等）",
+    st.zoom == 0.75 and v.mode == "canvas" and v.plan.resize.w == v.plan.resize.h
+      and v.plan.resize.w < v.plan.canvas.w,
+    vim.inspect(v.mode == "canvas" and { mode = v.mode, resize = v.plan.resize, canvas = v.plan.canvas } or v.mode))
   lib.ok("缩小后整图居中",
-    plan ~= nil
-      and math.abs(plan.offset.x - (pw - plan.resize.w) / 2) <= 1
-      and math.abs(plan.offset.y - (ph - plan.resize.h) / 2) <= 1,
-    vim.inspect(plan and plan.offset))
+    math.abs(v.plan.offset.x - (v.plan.canvas.w - v.plan.resize.w) / 2) <= 1
+      and math.abs(v.plan.offset.y - (v.plan.canvas.h - v.plan.resize.h) / 2) <= 1,
+    vim.inspect(v.plan.offset))
+  lib.ok("画布模式需要一次画布图片传输", transmits > t0,
+    ("transmits=%d→%d"):format(t0, transmits))
 end
 minus()
-vim.wait(300)
-lib.ok("缩小到 0.5", math.abs(st.zoom - 0.5) < 0.001, "zoom=" .. tostring(st.zoom))
+vim.wait(500)
+lib.ok("缩小到 0.5", st.zoom == 0.5, "zoom=" .. tostring(st.zoom))
 minus()
-vim.wait(100)
-lib.ok("0.5 为最小档（不再缩小）", math.abs(st.zoom - 0.5) < 0.001, "zoom=" .. tostring(st.zoom))
+vim.wait(150)
+lib.ok("0.5 为最小档（不再缩小）", st.zoom == 0.5, "zoom=" .. tostring(st.zoom))
+local t_canvas75 = transmits
+
 reset()
-vim.wait(300)
-lib.ok("再次复位回适应窗口", st.zoom == 1 and placed() == st.canvas_file,
-  ("zoom=%s placed=%s"):format(tostring(st.zoom), tostring(placed())))
+vim.wait(400)
+lib.ok("复位回源矩形模式且不重传（补边画布已缓存）",
+  st.zoom == 1 and st.view.mode == "rect" and transmits == t_canvas75,
+  ("zoom=%s mode=%s transmits=%d→%d"):format(tostring(st.zoom), st.view.mode, t_canvas75, transmits))
 
--- 幂等：稳定状态下重复复位不重建 placement（避免无意义 a=p）
+-- 幂等：重复复位不重传、不删除
 do
-  local p_now = st.placement
+  local t1, d1 = transmits, deletes
   reset()
-  vim.wait(250)
-  lib.ok("重复复位幂等（不重建 placement）", st.placement == p_now and st.zoom == 1,
-    ("same=%s zoom=%s"):format(tostring(st.placement == p_now), tostring(st.zoom)))
+  vim.wait(300)
+  lib.ok("重复复位幂等（不重传、不删除）", transmits == t1 and deletes == d1,
+    ("transmits=%d→%d deletes=%d→%d"):format(t1, transmits, d1, deletes))
 end
 
--- 滚轮合并渲染：连拨三次只渲染一次、只通知一次（防 WezTerm #7953 的 a=p 风暴）
+-- 滚轮合并渲染：连拨三次只渲染一次、不发通知
 do
   reset()
   vim.wait(300)
@@ -198,13 +201,18 @@ do
   lib.ok("图片变化不再通知", notifications == 0, "notifications=" .. tostring(notifications))
 end
 
--- 窗口事件不再即时重定位；静默 ~0.8s 后合并一次（WezTerm #7953 防护）
+-- 传输入口不残留（uv.sleep 包装还原）
+lib.ok("传输加速包装不残留（uv.sleep 已还原）", vim.uv.sleep == orig_sleep,
+  ("same=%s"):format(tostring(vim.uv.sleep == orig_sleep)))
+
+-- 窗口事件不再即时重定位；静默后合并重放（源矩形模式：一次 a=p、无重传）
 do
+  Snacks.image.terminal.request = orig_req
   reset()
   vim.wait(300)
   local ap, ad = 0, 0
-  local orig_req = Snacks.image.terminal.request
-  Snacks.image.terminal.request = function(opts)
+  local t_before = transmits
+  local count_req = function(opts)
     if type(opts) == "table" then
       if opts.a == "p" then
         ap = ap + 1
@@ -214,7 +222,7 @@ do
     end
     return orig_req(opts)
   end
-  -- 先清空前面用例积累的通知浮窗（它们的 WinClosed 会不断作废防抖计时）
+  Snacks.image.terminal.request = count_req
   pcall(function()
     require("snacks.notifier").hide()
   end)
@@ -222,25 +230,12 @@ do
   local fbuf = vim.api.nvim_create_buf(false, true)
   local win = vim.api.nvim_open_win(fbuf, false, { relative = "editor", width = 10, height = 3, row = 1, col = 1 })
   vim.wait(200)
-  lib.ok("浮窗出现时图片自动隐藏（不再每次事件发 a=p）", ap == 0 and ad >= 1,
+  lib.ok("浮窗出现时图片自动隐藏（不发放置请求）", ap == 0 and ad >= 1,
     ("ap=%d ad=%d"):format(ap, ad))
   vim.api.nvim_win_close(win, true)
   vim.wait(1400)
   Snacks.image.terminal.request = orig_req
-  do
-    local nf, names = 0, {}
-    for _, w in ipairs(vim.api.nvim_list_wins()) do
-      local c = vim.api.nvim_win_get_config(w)
-      if c.relative ~= "" then
-        nf = nf + 1
-        names[#names + 1] = ("%d:%s"):format(w, vim.api.nvim_buf_get_name(vim.api.nvim_win_get_buf(w)):sub(-24))
-      end
-    end
-    lib.ok("浮窗关闭后静默合并重定位一次", ap == 1,
-      ("ap=%d token=%s valid=%s wins=%d closed=%s floats=%d[%s]"):format(ap, tostring(st.replace_token),
-        tostring(vim.api.nvim_buf_is_valid(buf)), #vim.fn.win_findbuf(buf),
-        tostring(st.placement and st.placement.closed), nf, table.concat(names, ",")))
-  end
+  lib.ok("浮窗关闭后静默重放一次", ap == 1, ("ap=%d ad=%d"):format(ap, ad))
 end
 
 -- 命令行浮窗（noice）打开时图片自动隐藏，界面清空后恢复
@@ -252,7 +247,7 @@ do
   end)
   vim.wait(300)
   local ap, ad = 0, 0
-  local orig_req = Snacks.image.terminal.request
+  local orig_req2 = require("snacks.image").terminal.request
   Snacks.image.terminal.request = function(opts)
     if type(opts) == "table" then
       if opts.a == "p" then
@@ -261,7 +256,7 @@ do
         ad = ad + 1
       end
     end
-    return orig_req(opts)
+    return orig_req2(opts)
   end
   vim.api.nvim_exec_autocmds("CmdlineEnter", {})
   vim.wait(150)
@@ -270,7 +265,7 @@ do
   local done = vim.wait(2000, function()
     return ap >= 1
   end, 50)
-  Snacks.image.terminal.request = orig_req
+  Snacks.image.terminal.request = orig_req2
   lib.ok("离开命令行且界面清空后图片恢复", done and ap >= 1, ("ap=%d ad=%d"):format(ap, ad))
 end
 

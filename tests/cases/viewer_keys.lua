@@ -143,17 +143,19 @@ if vim.fn.executable("magick") == 1 then
   vim.bo.filetype = "image"
   local obuf = vim.api.nvim_get_current_buf()
   local ost = viewer.state(obuf)
-  vim.wait(1500, function()
-    return ost and ost.canvas_file ~= nil
+  vim.wait(2500, function()
+    return ost and ost.canvas_file ~= nil and ost.view ~= nil
   end, 50)
   local W = vim.api.nvim_win_get_width(0)
   local H = vim.api.nvim_win_get_height(0)
+  local exp = viewer._view(1, 1, W, H, W * 10, H * 20, 1, 0.5, 0.5)
   local okd, dims = pcall(require("snacks.image").util.dim, ost.canvas_file)
-  lib.ok("单元格尺寸手动兜底：画布按该尺寸生成",
-    ost.canvas_file ~= nil and okd and dims.width == math.floor(W * 10) + 1 and dims.height == math.floor(H * 20) + 1,
+  lib.ok("单元格尺寸手动兜底：补边几何按该尺寸计算",
+    ost.canvas_file ~= nil and ost.view ~= nil and exp.mode == "rect" and okd
+      and dims.width == exp.pad.w and dims.height == exp.pad.h,
     ("canvas=%s dims=%s expect=%dx%d"):format(tostring(ost.canvas_file),
       okd and ("%dx%d"):format(dims.width, dims.height) or "?",
-      math.floor(W * 10) + 1, math.floor(H * 20) + 1))
+      exp.pad.w, exp.pad.h))
   vim.g.nvkit_viewer_cell_w = nil
   vim.g.nvkit_viewer_cell_h = nil
 else
@@ -174,18 +176,20 @@ if vim.fn.executable("magick") == 1 then
   vim.cmd("edit " .. vim.fn.fnameescape(img))
   vim.bo.filetype = "image"
   local zst = viewer.state(vim.api.nvim_get_current_buf())
-  vim.wait(1500, function()
-    return zst and zst.canvas_file ~= nil
+  vim.wait(2500, function()
+    return zst and zst.canvas_file ~= nil and zst.view ~= nil
   end, 50)
   local W = vim.api.nvim_win_get_width(0)
   local H = vim.api.nvim_win_get_height(0)
+  local exp = viewer._view(1, 1, W, H, W * 9, H * 18, 1, 0.5, 0.5)
   local okd, dims = pcall(require("snacks.image").util.dim, zst.canvas_file)
   term.cell_width, term.cell_height = ow, oh
-  lib.ok("终端未上报像素尺寸时按默认 9×18 继续画布模式",
-    zst.canvas_file ~= nil and okd and dims.width == math.floor(W * 9) + 1 and dims.height == math.floor(H * 18) + 1,
+  lib.ok("终端未上报像素尺寸时按默认 9×18 估算补边几何",
+    zst.canvas_file ~= nil and zst.view ~= nil and okd
+      and dims.width == exp.pad.w and dims.height == exp.pad.h,
     ("canvas=%s dims=%s expect=%dx%d"):format(tostring(zst.canvas_file),
       okd and ("%dx%d"):format(dims.width, dims.height) or "?",
-      math.floor(W * 9) + 1, math.floor(H * 18) + 1))
+      exp.pad.w, exp.pad.h))
 else
   lib.ok("终端未上报像素尺寸默认估算（需要 ImageMagick，跳过）", true, "optional")
 end
