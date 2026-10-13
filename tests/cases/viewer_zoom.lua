@@ -160,6 +160,35 @@ lib.ok("复位回源矩形模式且不重传（补边画布已缓存）",
   st.zoom == 1 and st.view.mode == "rect" and transmits == t_canvas75,
   ("zoom=%s mode=%s transmits=%d→%d"):format(tostring(st.zoom), st.view.mode, t_canvas75, transmits))
 
+-- 渲染节流：按键连发合并（降低终端重绘压力；长按平移/缩放更顺）
+do
+  reset()
+  vim.wait(300)
+  plus()
+  plus()
+  vim.wait(300)
+  lib.ok("节流前状态：1.5x 可平移", st.zoom == 1.5, "zoom=" .. tostring(st.zoom))
+  local ap = 0
+  local orig_req3 = require("snacks.image").terminal.request
+  Snacks.image.terminal.request = function(opts)
+    if type(opts) == "table" and opts.a == "p" then
+      ap = ap + 1
+    end
+    return orig_req3(opts)
+  end
+  local py0 = st.py
+  pan_j()
+  pan_j()
+  lib.ok("连发平移在节流窗口内不立即绘制", ap == 0, "ap=" .. tostring(ap))
+  vim.wait(250)
+  Snacks.image.terminal.request = orig_req3
+  lib.ok("节流后合并为一次绘制（两段位移都生效）",
+    ap == 1 and math.abs(st.py - (py0 + 0.10)) < 0.02,
+    ("ap=%d py=%.3f→%.3f"):format(ap, py0, st.py))
+  reset()
+  vim.wait(300)
+end
+
 -- 幂等：重复复位不重传、不删除
 do
   local t1, d1 = transmits, deletes

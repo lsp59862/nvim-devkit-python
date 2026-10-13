@@ -6,7 +6,7 @@
 local M = {}
 
 local ZOOMS = { 0.5, 0.75, 1, 1.25, 1.5, 2, 3, 4, 6, 8 }
-local PAN_STEP = 0.15
+local PAN_STEP = 0.05 -- 平移步长（取景范围的百分比；越小平移越细腻）
 
 local function cache_dir()
   local dir = vim.fn.stdpath("cache") .. "/nvim-devkit/viewer"
@@ -226,6 +226,8 @@ local function state(buf)
     replace_token = 0, -- 窗口事件重定位令牌（静默合并，显式操作/渲染会使其失效）
     image_hidden = false, -- 因 UI 浮窗（命令行/消息/通知）暂时隐藏中
     view = nil, -- 当前视口方案（_view 的结果）
+    draw_token = 0, -- 节流渲染令牌
+    last_draw = 0, -- 上次实际渲染时间（uv.now）
     img = nil, -- 当前发送/放置的图片对象（snacks Image）
     pid = nil, -- 查看器自己的 placement id
     last_id = nil, -- 上一张图的 image id（换图时清理其 placement）
@@ -516,6 +518,7 @@ local function render(buf, st)
   end
   st.gen = st.gen + 1
   st.replace_token = (st.replace_token or 0) + 1 -- 新渲染接管，作废挂起的静默重定位
+  st.draw_token = (st.draw_token or 0) + 1 -- 作废挂起的节流渲染（最新状态优先）
   local gen = st.gen
   local snacks = require("snacks.image")
   local ok_img, img = without_sleep(function()
@@ -654,6 +657,24 @@ local function cancel_replace(st)
   st.replace_token = (st.replace_token or 0) + 1
 end
 
+--- 渲染节流：按键连发（长按平移/缩放）时合并重绘，降低终端重绘压力，
+--- 避免"按键快于终端刷新"导致的明显卡顿。间隔可用
+--- vim.g.nvkit_viewer_throttle_ms（默认 60）调整；最后一次状态一定会绘制。
+local function draw_soon(buf, st)
+  st.draw_token = (st.draw_token or 0) + 1
+  local token = st.draw_token
+  local now = vim.uv.now()
+  local ms = tonumber(vim.g.nvkit_viewer_throttle_ms) or 60
+  local gap = math.max(0, (st.last_draw or 0) + ms - now)
+  vim.defer_fn(function()
+    if st.draw_token ~= token or not vim.api.nvim_buf_is_valid(buf) or states[buf] ~= st then
+      return
+    end
+    st.last_draw = vim.uv.now()
+    render(buf, st)
+  end, gap)
+end
+
 --- 当前是否有 UI 浮窗（noice 的命令行/消息、通知、picker、终端面板等）
 --- 终端把图片画在文字上层，全窗画布会盖住这些浮窗 → 有浮窗时需暂时隐藏图片
 local function ui_floats_visible()
@@ -671,6 +692,7 @@ local function hide_image(st)
   if st.image_hidden then
     return
   end
+  st.draw_token = (st.draw_token or 0) + 1 -- 作废挂起的节流绘制（浮窗期间不重画图片）
   if st.img and st.pid then
     -- 源矩形模式：删除查看器自己的 placement（数据保留，恢复时直接重放）
     st.image_hidden = true
@@ -752,7 +774,7 @@ local function set_zoom(buf, st, zoom)
   if zoom <= 1 then
     st.px, st.py = 0.5, 0.5
   end
-  render(buf, st)
+  draw_soon(buf, st)
 end
 
 local function zoom_step(buf, st, delta)
@@ -810,7 +832,7 @@ local function pan(buf, st, dx, dy)
   cancel_wheel(st)
   st.px = math.max(v.px_lo, math.min(v.px_hi, st.px + dx))
   st.py = math.max(v.py_lo, math.min(v.py_hi, st.py + dy))
-  render(buf, st)
+  draw_soon(buf, st)
 end
 
 local function page(buf, st, delta)

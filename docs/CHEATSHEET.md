@@ -128,7 +128,7 @@
 - CSV：打开即表格视图（粘性表头），`:CsvViewToggle` 开关
 - PDF：Kitty/WezTerm 下 `:e paper.pdf` **默认按页看图**（`]p/[p` 或滚轮翻页，`+/-` 缩放 0.5x~8x（等比），`h/j/k/l` 平移，`0` 适应窗口，`q` 关闭，`<leader>rt` 切文本）；其他终端自动转文本，`]p/[p` 翻页
 - 图片（png/jpg/webp…）：打开即在当前窗口等比显示（居中）；`+/-` 或滚轮缩放（0.5x~8x；滚轮连拨合并为一次渲染，停下约 0.15s 生效），`h/j/k/l` 平移（放大超出窗口时），`0` 适应窗口，`q` 关闭（JPG 等转换需 ImageMagick，`./install.sh --with-magick`）
-- 查看器采用"一次传输 + 源矩形视口"：放大/平移只发送几十字节的放置请求（图片不重传、不重新烘焙），交互接近本地查看器；缩小到窗口以下切换为烘焙画布（缓存复用）
+- 查看器采用"一次传输 + 源矩形视口"：放大/平移只发送几十字节的放置请求（图片不重传、不重新烘焙），放大/平移按键连发会节流合并重绘（`vim.g.nvkit_viewer_throttle_ms`，默认 60ms；平移步长为取景范围 5%）；缩小到窗口以下切换为烘焙画布（缓存复用）
 
 ### 终端速记
 - 管理：`<leader>tp` 浮动面板 · `<leader>tb` 底部面板（呼出/收起；没有终端时自动创建）· `<leader>tl` 列表（Enter 切换，`<C-d>` 杀进程）
@@ -177,6 +177,7 @@
 | 更新后坏了 | `git -C ~/nvim-devkit log --oneline -5` → `git checkout <旧提交> -- config/` → 重跑 `install.sh --update` |
 | 分屏分不清 / 压暗不够 | 增强已默认开启：`:NvkitSplits` 开关；调强度 `:lua local t=require("nvim-devkit.theme"); t.options.fg_fade=0.7; t.options.bg_fade=0.5; t.dim_inactive(false); t.dim_inactive(true)`（数值 0~1，越大越明显） |
 | WezTerm 按 `Ctrl+Shift+=` 变放大页面 | WezTerm 默认占用该键调字号，按键到不了 nvim；按下方说明释放默认键（或转发 `F13`） |
+| 长按平移/缩放略有卡顿 | 查看器侧每步仅 ~0.05ms（实测，零重传）；主要成本是终端重绘整窗图片——可调大 `vim.g.nvkit_viewer_throttle_ms`（如 100）进一步降频；建议升级 WezTerm 到新版本（其 kitty 图片渲染路径近年有大量修复） |
 | 图片盖住命令行/消息/通知 | 终端把图片画在文字上层，全窗画布会盖住 noice 的命令行/消息浮窗；查看器已自动避让：打开 `:`、出现消息/通知/picker/终端面板等浮窗时**暂时隐藏图片**，界面清空后自动恢复（约 1 秒） |
 | 图片贴在窗口左上角且缩放无效 | 环境缺 ImageMagick（画布渲染降级为普通放置）：在那台机器 `cd ~/nvim-devkit && ./install.sh --with-magick`，并确认用 `~/.local/bin/nvim-devkit` 启动（自带工具 PATH；直接用 `nvim` 可能找不到 magick）。开图时查看器会明确提示缺什么。终端未上报像素尺寸（SSH 常见）时按默认 9×18 估算继续画布模式（宽高比误差约 4%）；想精确可 `:lua vim.g.nvkit_viewer_cell_w=8 vim.g.nvkit_viewer_cell_h=17` 或改用 `wezterm ssh`。排障：`~/nvim-devkit/scripts/viewer-doctor.sh` 一键输出环境与装配状态 |
 | 滚轮缩放把 WezTerm 弄崩 | WezTerm 已知 bug（wezterm#7953）：kitty 图片每次重定位（a=p）会重复累积图片附件，叠加滚动时 quad 数爆炸（千万级）→ 分配失败 panic。本发行版已把滚轮合并为"停下后一次渲染"、由查看器接管图片重定位（窗口事件静默合并、旧 placement 用正确 id 删除），大幅降低触发率。若仍崩：`:lua vim.g.nvkit_viewer_wheel = 0`（关滚轮缩放，`+/-` 照常）并升级 WezTerm 到含修复（PR #8035）的版本 |
