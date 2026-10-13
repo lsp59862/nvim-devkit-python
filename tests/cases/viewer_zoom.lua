@@ -198,13 +198,14 @@ do
     ("transmits=%d→%d deletes=%d→%d"):format(t1, transmits, d1, deletes))
 end
 
--- 滚轮合并渲染：连拨三次只渲染一次、不发通知
+-- 滚轮缩放：档位立即生效 + 节流合并重绘（与按键一致：滚动中持续更新、停下必绘最终状态）
 do
   reset()
   vim.wait(300)
   local wheel_up = vim.fn.maparg("<ScrollWheelUp>", "n", false, true).callback
   lib.ok("滚轮缩放键存在", wheel_up ~= nil)
   local gen0 = st.gen
+  local ap = 0
   local notifications = 0
   local orig_notify = vim.notify
   vim.notify = function(msg, ...)
@@ -213,20 +214,28 @@ do
     end
     return orig_notify(msg, ...)
   end
+  local orig_wreq = require("snacks.image").terminal.request
+  Snacks.image.terminal.request = function(opts)
+    if type(opts) == "table" and opts.a == "p" then
+      ap = ap + 1
+    end
+    return orig_wreq(opts)
+  end
   if wheel_up then
     wheel_up()
     wheel_up()
     wheel_up()
   end
   lib.ok("滚轮连拨立即推进档位（1→2）", math.abs(st.zoom - 2) < 0.001, "zoom=" .. tostring(st.zoom))
-  vim.wait(60)
-  lib.ok("合并窗口内不渲染", st.gen == gen0, ("gen=%d→%d"):format(gen0, st.gen))
+  lib.ok("节流窗口内不重复绘制", ap == 0, "ap=" .. tostring(ap))
   local done = vim.wait(1500, function()
-    return st.gen > gen0
+    return ap >= 1
   end, 20)
-  vim.wait(120)
+  vim.wait(200)
+  Snacks.image.terminal.request = orig_wreq
   vim.notify = orig_notify
-  lib.ok("停下后合并渲染一次", done and st.gen == gen0 + 1, ("gen=%d→%d"):format(gen0, st.gen))
+  lib.ok("滚轮停下后合并绘制一次（节流）", done and ap == 1 and st.gen == gen0 + 1,
+    ("ap=%d gen=%d→%d"):format(ap, gen0, st.gen))
   lib.ok("图片变化不再通知", notifications == 0, "notifications=" .. tostring(notifications))
 end
 

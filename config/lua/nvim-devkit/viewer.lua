@@ -222,7 +222,6 @@ local function state(buf)
     plan = nil, -- 最近一次渲染方案
     canvas_key = nil, -- 最近一次画布缓存键
     canvas_file = nil, -- 最近一次画布文件
-    wheel_token = 0, -- 滚轮合并渲染令牌（显式操作会使其失效）
     replace_token = 0, -- 窗口事件重定位令牌（静默合并，显式操作/渲染会使其失效）
     image_hidden = false, -- 因 UI 浮窗（命令行/消息/通知）暂时隐藏中
     view = nil, -- 当前视口方案（_view 的结果）
@@ -632,11 +631,6 @@ function M._ensure_canvas(buf, st, p)
   end
 end
 
---- 使挂起的滚轮合并渲染失效（显式操作立即生效且不重复渲染）
-local function cancel_wheel(st)
-  st.wheel_token = (st.wheel_token or 0) + 1
-end
-
 --- 缩放前置环境检查：不满足时给出可操作提示并返回 true
 local function zoom_blocked()
   if not magick() then
@@ -769,7 +763,6 @@ local function ladder_index(zoom)
 end
 
 local function set_zoom(buf, st, zoom)
-  cancel_wheel(st)
   st.zoom = zoom
   if zoom <= 1 then
     st.px, st.py = 0.5, 0.5
@@ -794,12 +787,9 @@ local function zoom_step(buf, st, delta)
   set_zoom(buf, st, ZOOMS[next_idx])
 end
 
--- 滚轮缩放：连续拨动只调档位（立即生效），停下 WHEEL_MS 后合并成一次渲染+一次通知。
--- WezTerm ≤ 未合并 PR #8035 的版本里，每次 placement 重定位（a=p）都会在单元格里重复
--- 累积图片附件（#7953），滚轮每步都渲染会飞快把 quad 数推到千万级并崩溃；合并后每次
--- 滚动突发只产生 1 次重定位。
-local WHEEL_MS = 140
-
+-- 滚轮缩放：档位立即生效；重绘走与按键一致的节流（滚动过程中每 ~60ms 更新一次，
+-- 停下后必然绘制最终状态）。此前用 140ms 尾部防抖，滚动期间画面完全不动、停下才跳一次，
+-- 体感明显卡顿；节流同时仍把 a=p 频率压住（防 WezTerm #7953 的附件累积）。
 local function wheel_zoom(buf, st, delta)
   if zoom_blocked() then
     return
@@ -807,20 +797,13 @@ local function wheel_zoom(buf, st, delta)
   local idx = ladder_index(st.zoom)
   local next_idx = math.max(1, math.min(#ZOOMS, idx + delta))
   if next_idx == idx then
-    return -- 到顶/到底：静默（合并渲染会给出最终状态提示）
+    return -- 到顶/到底：静默
   end
-  st.wheel_token = (st.wheel_token or 0) + 1
-  local token = st.wheel_token
   st.zoom = ZOOMS[next_idx]
   if st.zoom <= 1 then
     st.px, st.py = 0.5, 0.5
   end
-  vim.defer_fn(function()
-    if st.wheel_token ~= token or not vim.api.nvim_buf_is_valid(buf) or states[buf] ~= st then
-      return -- 已被后续滚轮或显式操作取代
-    end
-    render(buf, st)
-  end, WHEEL_MS)
+  draw_soon(buf, st)
 end
 
 local function pan(buf, st, dx, dy)
@@ -829,7 +812,6 @@ local function pan(buf, st, dx, dy)
     notify("先放大再平移（+ 放大）")
     return
   end
-  cancel_wheel(st)
   st.px = math.max(v.px_lo, math.min(v.px_hi, st.px + dx))
   st.py = math.max(v.py_lo, math.min(v.py_hi, st.py + dy))
   draw_soon(buf, st)
@@ -848,7 +830,6 @@ local function page(buf, st, delta)
     notify(("已在最后一页（共 %d 页）"):format(st.pages))
     return
   end
-  cancel_wheel(st)
   st.page = target
   render(buf, st)
   if st.pages then
@@ -910,7 +891,6 @@ end
 function M.close(buf, wipe)
   local st = states[buf]
   if st then
-    cancel_wheel(st)
     cancel_replace(st)
     if st.img and st.pid then
       local ok, terminal = pcall(require, "snacks.image.terminal")
