@@ -11,6 +11,7 @@ explorer.mode = true
 local f1 = lib.dir() .. "/preview_a.lua"
 vim.fn.writefile({ "print('a1')", "print('a2')" }, f1)
 explorer.on_change(nil, { file = f1 })
+vim.wait(300, function() return explorer.buf ~= nil end, 20)
 local b1 = explorer.buf
 lib.ok("文本预览：父窗口显示预览 buffer", vim.api.nvim_win_get_buf(parent) == b1,
   ("winbuf=%s preview=%s"):format(tostring(vim.api.nvim_win_get_buf(parent)), tostring(b1)))
@@ -25,6 +26,7 @@ lib.eq("文本内容正确", vim.api.nvim_buf_get_lines(b1, 0, 1, false)[1], "pr
 local f2 = lib.dir() .. "/preview_b.py"
 vim.fn.writefile({ "print('b1')" }, f2)
 explorer.on_change(nil, { file = f2 })
+vim.wait(300)
 lib.ok("文本预览复用同一 buffer", explorer.buf == b1, ("buf=%s→%s"):format(tostring(b1), tostring(explorer.buf)))
 lib.eq("复用后内容更新", vim.api.nvim_buf_get_lines(b1, 0, 1, false)[1], "print('b1')")
 
@@ -43,13 +45,14 @@ if vim.fn.executable("magick") == 1 then
   local png = lib.dir() .. "/preview_img.png"
   vim.system({ "magick", "-size", "120x90", "xc:#3a7", png }):wait(10000)
   explorer.on_change(nil, { file = png })
+  vim.wait(300, function() return explorer.buf ~= nil end, 20)
   local ib = explorer.buf
   local st = require("nvim-devkit.viewer").state(ib)
   local ok = vim.wait(3000, function()
     return st ~= nil and st.view ~= nil
   end, 50)
-  lib.ok("图片预览：ft=image 且查看器已渲染",
-    ib ~= nil and vim.bo[ib].filetype == "image" and ok and st.view ~= nil,
+  lib.ok("图片预览：查看器已渲染（预览 buffer 不挂 ft=image 键位）",
+    ib ~= nil and ok and st.view ~= nil and vim.bo[ib].filetype ~= "image",
     ("ft=%s st=%s"):format(tostring(ib and vim.bo[ib].filetype), tostring(st ~= nil)))
   lib.ok("图片预览显示在父窗口、焦点不动",
     vim.api.nvim_win_get_buf(parent) == ib and vim.api.nvim_get_current_win() == parent,
@@ -58,10 +61,35 @@ if vim.fn.executable("magick") == 1 then
   local png2 = lib.dir() .. "/preview_img2.png"
   vim.system({ "magick", "-size", "100x80", "xc:#a37", png2 }):wait(10000)
   explorer.on_change(nil, { file = png2 })
+  vim.wait(300)
   lib.ok("图片预览复用同一 buffer", explorer.buf == ib,
     ("buf=%s→%s"):format(tostring(ib), tostring(explorer.buf)))
 else
   lib.ok("图片预览（需要 ImageMagick，跳过）", true, "optional")
+end
+
+-- 回归：预览 buffer 被手动关闭后，后续预览仍能恢复（不再永久失效）
+do
+  explorer.mode = true
+  local p3 = lib.dir() .. "/preview_c.lua"
+  vim.fn.writefile({ "print('c')" }, p3)
+  explorer.on_change(nil, { file = p3 })
+  vim.wait(300)
+  local bc = explorer.buf
+  lib.ok("预览 buffer 创建", bc ~= nil and vim.api.nvim_buf_is_valid(bc), tostring(bc))
+  if bc then
+    pcall(vim.api.nvim_buf_delete, bc, { force = true })
+  end
+  vim.wait(100)
+  local p4 = lib.dir() .. "/preview_d.lua"
+  vim.fn.writefile({ "print('d')" }, p4)
+  explorer.on_change(nil, { file = p4 })
+  vim.wait(500)
+  local bd = explorer.buf
+  lib.ok("手动关闭预览 buffer 后仍可继续预览（新 buffer）",
+    bd ~= nil and vim.api.nvim_buf_is_valid(bd) and bd ~= bc
+      and vim.api.nvim_buf_get_lines(bd, 0, 1, false)[1] == "print('d')",
+    ("bc=%s bd=%s"):format(tostring(bc), tostring(bd)))
 end
 
 -- 关闭预览模式 → 清理

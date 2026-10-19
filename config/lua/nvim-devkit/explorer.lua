@@ -11,6 +11,7 @@ M.buf = nil -- 复用的预览 buffer
 M.kind = nil -- "text" | "image" | "pdf"
 M.picker = nil
 M.updating = false
+M.prev_buf = nil -- 预览前父窗口里的 buffer（删除预览 buffer 前先切回，避免窗口被关）
 
 local PREVIEW_NAME = "nvkit://preview"
 
@@ -25,10 +26,30 @@ local function valid_buf()
 end
 
 --- 删除预览 buffer（结束预览/正常打开/被修改时调用）
+--- 注意：nvim 的 :bdelete 会关闭显示该 buffer 的窗口（存在其它窗口时），
+--- 因此先把父窗口切回原 buffer，再删除预览 buffer。
 function M.clear()
   local buf = M.buf
   M.buf = nil
   M.kind = nil
+  local win = M.parent
+  if
+    buf
+    and vim.api.nvim_buf_is_valid(buf)
+    and win
+    and vim.api.nvim_win_is_valid(win)
+    and vim.api.nvim_win_get_buf(win) == buf
+  then
+    local prev = M.prev_buf
+    if prev and prev ~= buf and vim.api.nvim_buf_is_valid(prev) then
+      pcall(vim.api.nvim_win_set_buf, win, prev)
+    else
+      vim.api.nvim_win_call(win, function()
+        require("nvim-devkit.winbuf").open_dashboard()
+      end)
+    end
+  end
+  M.prev_buf = nil
   if buf and vim.api.nvim_buf_is_valid(buf) then
     pcall(vim.api.nvim_buf_delete, buf, { force = true })
   end
@@ -41,7 +62,10 @@ local function parent_win()
   M.parent = nil
   for _, win in ipairs(vim.api.nvim_tabpage_list_wins(0)) do
     if vim.api.nvim_win_get_config(win).relative == "" then
-      M.parent = win
+      local ft = vim.bo[vim.api.nvim_win_get_buf(win)].filetype
+      if not ft:match("^snacks_") then -- 跳过文件树/选择器的布局窗口
+        M.parent = win
+      end
     end
   end
   return M.parent
@@ -75,9 +99,23 @@ local function new_buf(kind)
       end
     end,
   })
-  if kind ~= "text" then
-    vim.bo[buf].filetype = "image" -- 触发查看器 attach（键位/事件；初始渲染会因名字不可读而跳过）
+  -- 预览 buffer 不设置 ft=image：不安装查看器的键位/事件钩子（避免与文件树浮窗的
+  -- 窗口/autocmd 生命周期相互干扰）；图片由 viewer.show 直接渲染
+  if kind == "text" then
+    vim.bo[buf].filetype = "text"
   end
+  vim.b[buf].nvkit_preview = true -- 让查看器知道这是预览 buffer（文件树浮窗属预期）
+  vim.api.nvim_create_autocmd("BufWipeout", {
+    buffer = buf,
+    once = true,
+    callback = function()
+      if M.buf == buf then
+        M.buf = nil
+        M.kind = nil
+        M.prev_buf = nil
+      end
+    end,
+  })
   M.buf = buf
   M.kind = kind
   return buf
@@ -105,15 +143,28 @@ local function show(src)
     local ft = vim.filetype.match({ filename = src }) or "text"
     vim.bo[buf].filetype = ft
     M.updating = false
-  else
-    require("nvim-devkit.viewer").show(buf, src)
   end
   if vim.api.nvim_win_is_valid(win) and vim.api.nvim_win_get_buf(win) ~= buf then
+    local cur = vim.api.nvim_win_get_buf(win)
+    if cur ~= buf and vim.api.nvim_buf_is_valid(cur) then
+      M.prev_buf = M.prev_buf or cur -- 记录预览前的 buffer 供 clear 恢复
+    end
     vim.api.nvim_win_set_buf(win, buf) -- 换显示但不切焦点
+  end
+  if kind ~= "text" then
+    -- 图片/PDF：先让预览 buffer 显示在窗口里，再渲染（查看器按窗口定位）
+    local ok, err = pcall(function()
+      require("nvim-devkit.viewer").show(buf, src)
+    end)
+    if not ok then
+      M.clear()
+      vim.notify("文件树预览: 渲染失败 " .. tostring(err), vim.log.levels.WARN)
+    end
   end
 end
 
---- picker on_change：预览模式下选中项即预览
+--- picker on_change：预览模式下选中项即预览。
+--- 延后到主循环并合并（快速滚动只渲染最后一次；避免在 picker 节流回调里做重活）
 function M.on_change(_picker, item)
   if not M.mode then
     return
@@ -122,7 +173,26 @@ function M.on_change(_picker, item)
   if type(path) ~= "string" or path == "" then
     return
   end
-  show(vim.fs.normalize(path))
+  M.token = (M.token or 0) + 1
+  local token = M.token
+  vim.defer_fn(function()
+    if M.token ~= token or not M.mode then
+      return
+    end
+    if not parent_win() then
+      if not M.warned then
+        M.warned = true
+        vim.notify("文件树预览: 预览窗口已关闭，重新打开文件树（<leader>e）后继续", vim.log.levels.WARN)
+      end
+      return
+    end
+    M.warned = false
+    local ok, err = pcall(show, vim.fs.normalize(path))
+    if not ok then
+      M.clear()
+      vim.notify("文件树预览: " .. tostring(err), vim.log.levels.WARN)
+    end
+  end, 40)
 end
 
 --- 切换预览模式

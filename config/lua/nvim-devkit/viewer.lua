@@ -41,24 +41,26 @@ local function without_sleep(fn)
   return unpack(ret)
 end
 
---- 同步预发送：snacks 的发送可能在"转换完成回调"里异步触发（绕过加速窗口、
---- 且沿用逐 4KB+sleep 的慢路径）。这里在需要时同步补发（无 sleep、一次到位）。
+--- 同步预发送：图片就绪时立即发送（无 sleep、一次到位）；未就绪返回 nil，
+--- 由 ensure_image 延迟重试。注意：不在这里 vim.wait——在 picker 等异步流程中
+--- 阻塞会与窗口关闭等 autocmd 相互干扰（曾触发 E855 并让预览永久失效）。
 local function presend(file)
   local ok, img = pcall(require("snacks.image").image.new, file)
   if not (ok and img) or img.sent then
     return img
   end
+  if img:failed() then
+    return nil
+  end
+  if not img:ready() then
+    return nil
+  end
   without_sleep(function()
-    vim.wait(8000, function()
-      return img:ready() or img:failed()
-    end, 30)
-    if img:ready() and not img.sent then
-      pcall(function()
-        img:send()
-      end)
-    end
+    pcall(function()
+      img:send()
+    end)
   end)
-  return img
+  return img.sent and img or nil
 end
 
 
@@ -425,8 +427,8 @@ local function position_cursor(buf)
   end
 end
 
---- 确保 file 对应的图片对象存在（同步预发送，避免异步慢发送）
-local function ensure_image(st, file)
+--- 确保 file 对应的图片对象存在（同步预发送；未就绪时延迟重试渲染）
+local function ensure_image(buf, st, file)
   if st.img and st.img.file == file and st.img.sent then
     return st.img
   end
@@ -435,6 +437,17 @@ local function ensure_image(st, file)
     st.img = img
     return img
   end
+  -- 转换/识别尚未完成：稍后重试（不阻塞、不依赖事件）
+  local gen = st.gen
+  st.retry = (st.retry or 0) + 1
+  if st.retry <= 200 then
+    vim.defer_fn(function()
+      if states[buf] == st and st.gen == gen then
+        pcall(render, buf, st)
+      end
+    end, 40)
+  end
+  return nil
 end
 
 local pid_seq = 1000
@@ -473,7 +486,7 @@ local function draw_rect(buf, st, base, view, W, H)
     end
   end
 
-  local img = ensure_image(st, file)
+  local img = ensure_image(buf, st, file)
   if not img then
     return
   end
@@ -731,7 +744,8 @@ local function schedule_replace(buf, st, delay)
     if not (p and not p.closed and p:ready()) and not st.img then
       return
     end
-    if ui_floats_visible() then
+    -- 预览 buffer（文件树预览模式）与文件树浮窗并存是预期状态，不做浮窗避让
+    if not vim.b[buf].nvkit_preview and ui_floats_visible() then
       if tries < RETRY_MAX then
         vim.defer_fn(function()
           attempt(tries + 1)
@@ -761,7 +775,10 @@ local function sync_visibility(buf, st)
   if not (vim.api.nvim_buf_is_valid(buf) and states[buf] == st) then
     return
   end
-  if ui_floats_visible() then
+  if vim.b[buf].nvkit_preview then
+    -- 预览 buffer：文件树浮窗是预期状态；界面变化时直接重放（不做浮窗避让）
+    schedule_replace(buf, st)
+  elseif ui_floats_visible() then
     cancel_replace(st)
     hide_image(st)
   else
