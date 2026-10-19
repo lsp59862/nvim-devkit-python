@@ -276,6 +276,49 @@ do
   lib.ok("浮窗关闭后静默重放一次", ap == 1, ("ap=%d ad=%d"):format(ap, ad))
 end
 
+-- 回归：文件浏览器流程下切回图片应快速恢复（不再"按键才显示"）
+do
+  reset()
+  vim.wait(300)
+  local ap = 0
+  local orig_req4 = require("snacks.image").terminal.request
+  Snacks.image.terminal.request = function(opts)
+    if type(opts) == "table" and opts.a == "p" then
+      ap = ap + 1
+    end
+    return orig_req4(opts)
+  end
+  local main = vim.api.nvim_get_current_win()
+  local fbuf = vim.api.nvim_create_buf(false, true)
+  local fwin = vim.api.nvim_open_win(fbuf, true, {
+    relative = "editor",
+    width = 30,
+    height = 8,
+    row = 5,
+    col = 10,
+    style = "minimal",
+    border = "rounded",
+  })
+  vim.wait(150)
+  local hidden_in_float = st.image_hidden
+  -- picker 真实顺序：关浮窗 → 打开别的文件 → 再切回图片
+  vim.api.nvim_win_close(fwin, true)
+  local codebuf = vim.api.nvim_create_buf(true, false)
+  vim.api.nvim_buf_set_name(codebuf, lib.dir() .. "/other.lua")
+  vim.api.nvim_win_set_buf(main, codebuf)
+  vim.wait(200)
+  vim.api.nvim_win_set_buf(main, buf)
+  local t0 = vim.uv.now()
+  local done = vim.wait(1500, function()
+    return ap >= 1
+  end, 20)
+  local elapsed = vim.uv.now() - t0
+  Snacks.image.terminal.request = orig_req4
+  lib.ok("浮窗打开时图片被隐藏", hidden_in_float == true, "hidden=" .. tostring(hidden_in_float))
+  lib.ok("切回图片 1s 内自动恢复（不按键）", done and ap >= 1 and st.image_hidden == false,
+    ("ap=%d elapsed=%dms hidden=%s"):format(ap, elapsed, tostring(st.image_hidden)))
+end
+
 -- 命令行浮窗（noice）打开时图片自动隐藏，界面清空后恢复
 do
   reset()

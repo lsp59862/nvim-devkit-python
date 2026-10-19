@@ -645,6 +645,11 @@ end
 -- WezTerm ≤ 未合并 PR #8035 的版本里，重定位（a=p）与滚动 interplay 会重复累积图片
 -- 附件（wezterm#7953）→ quad 爆炸崩溃；因此不做"每次事件都重定位"，而是静默后一次。
 local REPLACE_MS = 800
+-- 切回图片 buffer（BufWinEnter/BufEnter）时尽快恢复，避免"要按一下键才出现"
+local ENTER_MS = 120
+-- 界面仍有浮窗时的恢复重试间隔/上限（不再依赖"某一次 WinClosed 必然到达"）
+local RETRY_MS = 200
+local RETRY_MAX = 50
 
 --- 作废挂起的静默重定位（显式操作/新渲染/关闭接管）
 local function cancel_replace(st)
@@ -705,11 +710,13 @@ local function hide_image(st)
   end
 end
 
---- 静默合并重定位：窗口事件落定后对当前画布重新放置一次（仅一次 a=p）
-local function schedule_replace(buf, st)
+--- 合并重定位：窗口事件落定后对当前画布重新放置一次（仅一次 a=p）。
+--- 浮窗（命令行/消息/通知/picker/文件树）仍在时按 RETRY_MS 轮询重试，
+--- 关闭后尽快恢复——不会因为错过某次事件而永久隐藏。
+local function schedule_replace(buf, st, delay)
   st.replace_token = (st.replace_token or 0) + 1
   local token = st.replace_token
-  vim.defer_fn(function()
+  local function attempt(tries)
     if st.replace_token ~= token or not vim.api.nvim_buf_is_valid(buf) or states[buf] ~= st then
       return
     end
@@ -721,7 +728,12 @@ local function schedule_replace(buf, st)
       return
     end
     if ui_floats_visible() then
-      return -- 界面仍有浮窗（消息/通知/picker）：保持隐藏，等 WinClosed 再恢复
+      if tries < RETRY_MAX then
+        vim.defer_fn(function()
+          attempt(tries + 1)
+        end, RETRY_MS)
+      end
+      return
     end
     if st.img then
       -- 源矩形模式：直接重放一次放置请求（极廉价，不重传图片）
@@ -734,7 +746,10 @@ local function schedule_replace(buf, st)
     pcall(function()
       p:update()
     end)
-  end, REPLACE_MS)
+  end
+  vim.defer_fn(function()
+    attempt(0)
+  end, delay or REPLACE_MS)
 end
 
 --- UI 浮窗出现则隐藏图片；界面清空后静默合并恢复
@@ -1000,7 +1015,8 @@ function M.attach(buf)
         group = aug,
         buffer = buf,
         callback = function()
-          schedule_replace(buf, st)
+          -- 重新进入图片 buffer：尽快恢复（120ms），不必等窗口事件的 800ms 合并窗口
+          schedule_replace(buf, st, ENTER_MS)
         end,
       })
       vim.api.nvim_create_autocmd({ "WinEnter", "WinClosed", "WinNew", "WinResized" }, {
