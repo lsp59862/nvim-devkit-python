@@ -26,7 +26,7 @@ cd ~/nvim-devkit
 - nvim 可执行文件查找顺序：`NVIM_DEVKIT_BIN` 环境变量 → `~/.local/share/nvim-devkit/nvim/bin/nvim` → PATH 中的 `nvim`
 - 失败时完整日志留在 `/tmp/nvim-devkit-tests/log-<用例>.txt`
 
-## 覆盖范围（36 个用例 / 226 项断言）
+## 覆盖范围（37 个用例 / 237 项断言）
 
 | 用例 | 覆盖行为 |
 | --- | --- |
@@ -58,6 +58,7 @@ cd ~/nvim-devkit
 | `dashboard_keys` | 启动页按键契约：`r` = 恢复会话（persistence.load）· `q` = `:q`（防回退到 snacks 默认的 `<cmd>bd`）· buffer 内映射存在 |
 | `explorer_all_files` | 文件树默认显示所有文件：被 `.gitignore` 忽略的 `result/`（ignored 标记加载后仍可见）· 点文件 · 普通文件；`explorer` 与 `files` 数据源默认 `hidden+ignored` |
 | `viewer_keys` | 查看器：等比缩放纯函数 `_plan`（z=1 整图居中 / 2x 中心取景 / 平移夹紧 / z<1 整图缩小居中 / 正方形图 x/y 等比系数一致）· 渲染命令 `_render_cmd` 结构（透明画布+裁剪+缩放+按落点合成）· pdfinfo 页数解析 · `ft=image` 在普通窗口显示（无浮窗、不额外开窗）并安装图片键位（q/±/0/滚轮/hjkl，无翻页）· `q` 关闭并删除 buffer · PDF 键位（`]p/[p`、滚轮翻页、`<leader>rt` 切文本）· 逃生阀（`vim.g.nvkit_viewer_wheel=0` 时滚轮为空操作、不缩放不渲染）· 环境降级（PATH 无 ImageMagick 时普通放置源图、缩放不生效且不重建 placement）· 单元格尺寸兜底（终端未上报像素尺寸时按默认 9×18 估算补边几何，断言与 `_view` 纯函数一致；`vim.g.nvkit_viewer_cell_w/_h` 手动指定）· 初始不留 snacks 源图 placement（防"一开始霸屏"） |
+| `explorer_preview` | 文件树预览模式：文本预览显示在父窗口且不切焦点 · 预览 buffer 不列出 · 文本/图片复用同一 buffer · 文本预览被修改后自动删除 · 图片预览走查看器（ft=image）· 关闭预览模式清理 |
 | `pathfmt` | 路径显示：cwd 下加 `./` 前缀 · 家目录 `~` 前缀 · 长路径缩略（`./…/masks/mask.jpg`，保留文件名与唯一后缀、不超预算）· 同名文件去歧义（保留各自不同的目录段）· `buffer_label` 从 buffer 列表自动收集同名兄弟 |
 | `viewer_zoom` | 查看器真实缩放路径（源矩形模型 + 画布模型）：z=1 源矩形模式（图片只传一次、补边画布=纯函数 pad 几何、视口=整幅）· 放大/平移只更新源矩形（不重传、不删除，1 次 `a=p`，视口与 `_view` 纯函数一致）· z<1 切画布模式（整图缩小、长宽相等、居中，一次烘焙）· 复位复用缓存不重传 · 渲染节流（连发平移在节流窗口内不分次绘制、合并为一次且两段位移都生效；平移步长 0.05）· 滚轮与按键一致：档位立即生效、节流合并重绘（节流窗口内不重复绘制、停下后合并一次；不再通知）· 窗口事件静默后重放一次 · uv.sleep 加速包装不残留 · UI 浮窗自动避让（浮窗出现隐藏、CmdlineEnter/Leave 隐藏/恢复）· 浏览器流程回归（浮窗中切走再切回图片，≤1s 自动恢复、不按键）· 同一 buffer 重开（:buffer 当前图片，无进入事件）浮窗关闭后 ≤600ms 自动恢复 · 恢复统一为 150ms（浮窗仍在时按 200ms 轮询）（无 ImageMagick 时跳过） |
 | `winbuf_exit_dashboard` | 退出类：dashboard 上 `:q` → 退出 nvim |

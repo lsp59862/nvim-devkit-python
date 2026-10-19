@@ -211,6 +211,7 @@ local function state(buf)
   local ext = vim.fn.fnamemodify(name, ":e"):lower()
   st = {
     src = name, -- 当前渲染源（PDF 会随页码变化）
+    orig = name, -- 用户视角的源文件（预览 buffer 用；render 不会改写）
     src_dims = nil, -- 源像素尺寸
     mode = ext == "pdf" and "pdf" or "image",
     zoom = 1,
@@ -242,10 +243,11 @@ function M.state(buf)
 end
 
 local function source_file(st)
+  local src = st.orig or st.src
   if st.mode == "pdf" then
-    return ("%s#page=%d"):format(st.src, st.page)
+    return ("%s#page=%d"):format(src, st.page)
   end
-  return st.src
+  return src
 end
 
 --- 显示该 buffer 的窗口格数（多窗取最小；未显示时给合理估计）
@@ -860,7 +862,7 @@ local function fetch_pages(buf, st)
   if st.mode ~= "pdf" or st.pages then
     return
   end
-  require("nvim-devkit.pdf").count_pages(st.src, function(n)
+  require("nvim-devkit.pdf").count_pages(st.orig or st.src, function(n)
     if n and vim.api.nvim_buf_is_valid(buf) and states[buf] == st then
       st.pages = n
     end
@@ -924,6 +926,24 @@ function M.close(buf, wipe)
   if wipe and vim.api.nvim_buf_is_valid(buf) then
     pcall(vim.api.nvim_buf_delete, buf, { force = true })
   end
+end
+
+--- 在指定 buffer 中显示/切换任意图片或 PDF（文件浏览器预览模式用；buffer 可复用）
+function M.show(buf, src)
+  if not vim.api.nvim_buf_is_valid(buf) or type(src) ~= "string" then
+    return
+  end
+  local st = state(buf)
+  local ext = vim.fn.fnamemodify(src, ":e"):lower()
+  st.orig = src
+  st.src = src
+  st.mode = ext == "pdf" and "pdf" or "image"
+  st.zoom = 1
+  st.px, st.py = 0.5, 0.5
+  st.page = 1
+  st.pages = nil
+  fetch_pages(buf, st)
+  render(buf, st)
 end
 
 --- 为 ft=image 的 buffer 安装查看器（键位 + 等比渲染），幂等

@@ -82,7 +82,7 @@
 - 练习：改造一段 Python 函数：改名、换参数、复制函数体，全程用操作符
 
 ### Day 3 — 文件 / Buffer / 窗口 / 会话
-- `<leader>e` 文件树、`<leader><space>` 智能查找、`<leader>ff` 找文件
+- `<leader>e` 文件树（`<A-p>` 预览模式：选中即预览、焦点不动、单一复用 buffer，图片/PDF 也能预览）、`<leader><space>` 智能查找、`<leader>ff` 找文件
 - `<Tab> / <S-Tab>` 切 buffer；`<leader>bd` 关 buffer；`<leader>bo` 关其他
 - `Ctrl-h/j/k/l` 跨窗口；`<leader>wo / w= / wd`；`Ctrl+Tab / Ctrl+Shift+Tab` 切标签页
 - **tab = 工作区**：每个 tab 的文件列表相互隔离，切过去只看到那个 tab 的文件；同一文件跨 tab 是同一个 buffer（撤销/修改共享）

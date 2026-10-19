@@ -64,7 +64,7 @@ end, { desc = "关闭文件+窗口（最后一个回启动页；只关文件用 
 map("n", "<leader>bo", function() require("snacks").bufdelete.other() end, { desc = "关闭其他 buffer" })
 
 -- ── 文件 / 搜索（snacks picker）──────────────────────
-map("n", "<leader>e", function() require("snacks").explorer() end, { desc = "文件树" })
+map("n", "<leader>e", function() require("nvim-devkit.explorer").open() end, { desc = "文件树（<A-p> 预览模式）" })
 map({ "n", "x" }, "<leader><space>", function() require("snacks").picker.smart() end, { desc = "智能查找文件" })
 map("n", "<leader>ff", function() require("snacks").picker.files() end, { desc = "查找文件" })
 map("n", "<leader>fg", function() require("snacks").picker.git_files() end, { desc = "查找 Git 文件" })

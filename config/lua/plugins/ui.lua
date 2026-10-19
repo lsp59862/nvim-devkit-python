@@ -111,7 +111,7 @@ return {
             "                                     ",
           }, "\n"),
           keys = {
-            { icon = "", key = "e", desc = "文件树", action = ":lua Snacks.explorer()" },
+            { icon = "", key = "e", desc = "文件树", action = ":lua require('nvim-devkit.explorer').open()" },
             { icon = "", key = "f", desc = "查找文件", action = ":lua Snacks.picker.smart()" },
             { icon = "", key = "g", desc = "全项目搜索", action = ":lua Snacks.picker.grep()" },
             { icon = "", key = "u", desc = "撤销树", action = ":UndotreeToggle" },
