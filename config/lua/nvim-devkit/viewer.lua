@@ -644,8 +644,10 @@ end
 -- 窗口事件（浮窗开关/分屏/切换）静默多久后合并一次重定位。
 -- WezTerm ≤ 未合并 PR #8035 的版本里，重定位（a=p）与滚动 interplay 会重复累积图片
 -- 附件（wezterm#7953）→ quad 爆炸崩溃；因此不做"每次事件都重定位"，而是静默后一次。
-local REPLACE_MS = 800
--- 切回图片 buffer（BufWinEnter/BufEnter）时尽快恢复，避免"要按一下键才出现"
+-- 恢复延迟：界面清空后尽快重放（浮窗仍在时由下方轮询检查兜底，不再依赖长去抖）。
+-- 旧值 800ms 会让"同一 buffer 重开"（没有 BufEnter）等近 1 秒，体感像"按键才显示"。
+local REPLACE_MS = 150
+-- 切回图片 buffer（BufWinEnter/BufEnter）时同样尽快恢复
 local ENTER_MS = 120
 -- 界面仍有浮窗时的恢复重试间隔/上限（不再依赖"某一次 WinClosed 必然到达"）
 local RETRY_MS = 200

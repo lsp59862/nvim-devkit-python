@@ -268,12 +268,13 @@ do
   local fbuf = vim.api.nvim_create_buf(false, true)
   local win = vim.api.nvim_open_win(fbuf, false, { relative = "editor", width = 10, height = 3, row = 1, col = 1 })
   vim.wait(200)
-  lib.ok("浮窗出现时图片自动隐藏（不发放置请求）", ap == 0 and ad >= 1,
-    ("ap=%d ad=%d"):format(ap, ad))
+  lib.ok("浮窗出现时图片自动隐藏", ad >= 1 and st.image_hidden == true,
+    ("ad=%d hidden=%s"):format(ad, tostring(st.image_hidden)))
   vim.api.nvim_win_close(win, true)
   vim.wait(1400)
   Snacks.image.terminal.request = orig_req
-  lib.ok("浮窗关闭后静默重放一次", ap == 1, ("ap=%d ad=%d"):format(ap, ad))
+  lib.ok("浮窗关闭后自动重放恢复", ap >= 1 and st.image_hidden == false,
+    ("ap=%d hidden=%s"):format(ap, tostring(st.image_hidden)))
 end
 
 -- 回归：文件浏览器流程下切回图片应快速恢复（不再"按键才显示"）
@@ -316,6 +317,42 @@ do
   Snacks.image.terminal.request = orig_req4
   lib.ok("浮窗打开时图片被隐藏", hidden_in_float == true, "hidden=" .. tostring(hidden_in_float))
   lib.ok("切回图片 1s 内自动恢复（不按键）", done and ap >= 1 and st.image_hidden == false,
+    ("ap=%d elapsed=%dms hidden=%s"):format(ap, elapsed, tostring(st.image_hidden)))
+end
+
+-- 回归：同一 buffer 重开（:buffer <当前图片> 无任何进入事件）也要自动恢复
+do
+  reset()
+  vim.wait(300)
+  local ap = 0
+  local orig_req5 = require("snacks.image").terminal.request
+  Snacks.image.terminal.request = function(opts)
+    if type(opts) == "table" and opts.a == "p" then
+      ap = ap + 1
+    end
+    return orig_req5(opts)
+  end
+  local fbuf = vim.api.nvim_create_buf(false, true)
+  local fwin = vim.api.nvim_open_win(fbuf, true, {
+    relative = "editor",
+    width = 30,
+    height = 8,
+    row = 5,
+    col = 10,
+    style = "minimal",
+    border = "rounded",
+  })
+  vim.wait(150)
+  vim.api.nvim_win_close(fwin, true)
+  vim.cmd("buffer " .. buf) -- 真实 picker 对当前 buffer 的打开方式（无事件）
+  local t0 = vim.uv.now()
+  local done = vim.wait(1500, function()
+    return ap >= 1
+  end, 20)
+  local elapsed = vim.uv.now() - t0
+  Snacks.image.terminal.request = orig_req5
+  lib.ok("同一 buffer 重开：浮窗关闭后 ≤600ms 自动恢复（不按键）",
+    done and ap >= 1 and st.image_hidden == false and elapsed < 600,
     ("ap=%d elapsed=%dms hidden=%s"):format(ap, elapsed, tostring(st.image_hidden)))
 end
 
