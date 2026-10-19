@@ -142,6 +142,27 @@ return {
         sources = {
           explorer = { hidden = true, ignored = true },
           files = { hidden = true, ignored = true },
+          -- buffer 列表：相对工作目录显示；过长/同名时智能缩略（保留文件名与区分目录）
+          buffers = {
+            format = function(item, picker)
+              local pf = require("nvim-devkit.pathfmt")
+              local ret = {}
+              ret[#ret + 1] = { ("%3d "):format(item.buf or 0), "SnacksPickerBufNr" }
+              ret[#ret + 1] = { item.flags or "", "SnacksPickerBufFlags" }
+              ret[#ret + 1] = { " " }
+              local path = (item.file and item.file ~= "") and item.file or item.name or ""
+              -- 显示宽度随 picker 窗口自适应（留出编号/标志前缀的空间）
+              local bw = 60
+              local ok, win = pcall(function()
+                return picker.list and picker.list.win
+              end)
+              if ok and win and vim.api.nvim_win_is_valid(win) then
+                bw = math.max(30, vim.api.nvim_win_get_width(win) - 24)
+              end
+              ret[#ret + 1] = { pf.buffer_label(path, bw), "SnacksPickerFile" }
+              return ret
+            end,
+          },
         },
         -- 全局：所有选择器都能用 Alt+J/K 上下选择（输入框里也不用先打字）
         win = {
