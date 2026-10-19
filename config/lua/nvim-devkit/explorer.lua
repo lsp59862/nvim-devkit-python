@@ -163,9 +163,14 @@ local function show(src)
   end
 end
 
---- picker on_change：预览模式下选中项即预览。
---- 延后到主循环并合并（快速滚动只渲染最后一次；避免在 picker 节流回调里做重活）
-function M.on_change(_picker, item)
+--- 选中项变化：不自动预览（移动不渲染，避免快速滚动卡顿）。
+--- 预览由 <CR>/双击（preview_item）显式触发。
+function M.on_change(_picker, _item)
+  return
+end
+
+--- 显式预览某一项（<CR>/双击、或开启预览模式时）；延后合并、避免在 picker 节流回调里做重活
+function M.preview_item(_picker, item)
   if not M.mode then
     return
   end
@@ -199,10 +204,10 @@ end
 function M.toggle(picker)
   M.mode = not M.mode
   if M.mode then
-    notify("预览模式开（<A-p> 关闭；<CR> 正常打开）")
+    notify("预览模式开（<A-p> 关闭；<CR> 预览选中项）")
     local cur = picker and picker:current()
     if cur then
-      M.on_change(picker, cur)
+      M.preview_item(picker, cur)
     end
   else
     M.clear()
@@ -219,7 +224,7 @@ function M.open(opts)
       -- 预览模式：回车只预览，不打开、不关文件树
       local cur = picker and picker:current()
       if cur then
-        M.on_change(picker, cur)
+        M.preview_item(picker, cur)
       end
       return
     end

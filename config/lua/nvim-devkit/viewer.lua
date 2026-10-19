@@ -1058,6 +1058,19 @@ function M.attach(buf)
           schedule_replace(buf, st, ENTER_MS)
         end,
       })
+      -- 离开窗口时真正删除 placement：空 buffer 之间切换时 nvim 不会重绘单元格，
+      -- kitty 图片附件会残留在窗口里（旧图叠在新图下面/底层）——必须主动清除
+      vim.api.nvim_create_autocmd({ "BufWinLeave", "BufLeave" }, {
+        group = aug,
+        buffer = buf,
+        callback = function()
+          vim.schedule(function()
+            if vim.api.nvim_buf_is_valid(buf) and states[buf] == st and #vim.fn.win_findbuf(buf) == 0 then
+              hide_image(st)
+            end
+          end)
+        end,
+      })
       vim.api.nvim_create_autocmd({ "WinEnter", "WinClosed", "WinNew", "WinResized" }, {
         group = aug,
         callback = function()
@@ -1092,7 +1105,9 @@ function M.attach(buf)
     -- 安全网：snacks 自带的源图挂载可能晚于我们（异步终端探测），稍后清扫几次
     for _, delay in ipairs({ 400, 1500, 3000 }) do
       vim.defer_fn(function()
-        pcall(sweep_foreign, buf, state(buf))
+        if vim.api.nvim_buf_is_valid(buf) then
+          pcall(sweep_foreign, buf, state(buf))
+        end
       end, delay)
     end
   end

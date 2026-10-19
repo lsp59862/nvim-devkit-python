@@ -198,6 +198,32 @@ do
     ("transmits=%d→%d deletes=%d→%d"):format(t1, transmits, d1, deletes))
 end
 
+-- 离开图片窗口要删除 placement（空 buffer 间切换不会重绘单元格，旧图会残留叠加）
+do
+  reset()
+  vim.wait(300)
+  local ad = 0
+  local orig_req6 = require("snacks.image").terminal.request
+  Snacks.image.terminal.request = function(opts)
+    if type(opts) == "table" and opts.a == "d" then
+      ad = ad + 1
+    end
+    return orig_req6(opts)
+  end
+  local win = vim.api.nvim_get_current_win()
+  local textbuf = vim.api.nvim_create_buf(true, false)
+  vim.api.nvim_buf_set_name(textbuf, lib.dir() .. "/leave_text.lua")
+  vim.api.nvim_win_set_buf(win, textbuf)
+  vim.wait(400)
+  lib.ok("离开图片窗口时删除 placement（防旧图残留叠加）", ad >= 1,
+    "ad=" .. tostring(ad))
+  vim.api.nvim_win_set_buf(win, buf)
+  vim.wait(600)
+  Snacks.image.terminal.request = orig_req6
+  lib.ok("回到图片窗口后自动恢复显示", st.image_hidden == false and st.view ~= nil,
+    ("hidden=%s view=%s"):format(tostring(st.image_hidden), tostring(st.view ~= nil)))
+end
+
 -- 滚轮缩放：档位立即生效 + 节流合并重绘（与按键一致：滚动中持续更新、停下必绘最终状态）
 do
   reset()

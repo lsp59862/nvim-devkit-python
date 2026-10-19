@@ -100,7 +100,7 @@ cd ~/nvim-devkit && ./install.sh --update
 
 | 场景 | 方案 |
 | --- | --- |
-| 文件浏览 / 搜索 | snacks.explorer + snacks.picker（40+ 数据源，取代 netrw/telescope/neo-tree；所有列表 `Alt+J`/`Alt+K` 上下选择；文件树 `<A-p>` 预览模式：选中即预览、焦点不动、单一复用 buffer，文本/图片/PDF 均可预览；文件树/查找默认显示所有文件，不被 `.gitignore` 过滤、点文件可见） |
+| 文件浏览 / 搜索 | snacks.explorer + snacks.picker（40+ 数据源，取代 netrw/telescope/neo-tree；所有列表 `Alt+J`/`Alt+K` 上下选择；文件树 `<A-p>` 预览模式：`<CR>`/双击预览选中项（移动选择不预览，快速滚动不卡）、焦点不动、单一复用 buffer，文本/图片/PDF 均可预览；文件树/查找默认显示所有文件，不被 `.gitignore` 过滤、点文件可见） |
 | 代码高亮 | nvim-treesitter（main 分支，parser 本地编译） |
 | 补全 | blink.cmp（锁 1.x 稳定版，rust 匹配器不可用时自动降级 Lua） |
 | LSP | basedpyright + ruff + lua_ls + bashls + jsonls + yamlls（自动识别 conda/venv） |
@@ -278,7 +278,7 @@ Vim 的"模式 + 前缀键 + 寄存器"让误按后果难以预期。本配置�
 ## 行为测试
 
 ```bash
-./tests/run.sh           # 行为测试：37 个用例 / 239 项断言，必须全部通过
+./tests/run.sh           # 行为测试：37 个用例 / 242 项断言，必须全部通过
 scripts/checkhealth.sh   # 健康检查：硬错误必须为 0
 ```
 
