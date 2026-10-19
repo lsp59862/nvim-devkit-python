@@ -76,6 +76,35 @@ else
   lib.ok("图片预览（需要 ImageMagick，跳过）", true, "optional")
 end
 
+-- 回归：切图/切文本时删除旧 placement（旧图不得残留叠加）
+do
+  local viewer = require("nvim-devkit.viewer")
+  local events = {}
+  local orig_req7 = require("snacks.image").terminal.request
+  Snacks.image.terminal.request = function(opts)
+    if type(opts) == "table" and (opts.a == "p" or opts.a == "d") then
+      events[#events + 1] = { a = opts.a, i = opts.i }
+    end
+    return orig_req7(opts)
+  end
+  -- 当前预览是图片：切换到文本预览时应删除当前图片的 placement
+  local st_now = viewer.state(explorer.buf)
+  local cur_id = st_now and st_now.img and st_now.img.id
+  local tmix = lib.dir() .. "/preview_mix.lua"
+  vim.fn.writefile({ "print('mix')" }, tmix)
+  explorer.preview_item(nil, { file = tmix })
+  vim.wait(400)
+  local deleted = false
+  for _, e in ipairs(events) do
+    if e.a == "d" and e.i == cur_id then
+      deleted = true
+    end
+  end
+  lib.ok("切到文本预览时删除图片 placement（防旧图残留）",
+    cur_id ~= nil and deleted, ("cur=%s events=%s"):format(tostring(cur_id), vim.inspect(events)))
+  Snacks.image.terminal.request = orig_req7
+end
+
 -- 回归：预览 buffer 被手动关闭后，后续预览仍能恢复（不再永久失效）
 do
   explorer.mode = true

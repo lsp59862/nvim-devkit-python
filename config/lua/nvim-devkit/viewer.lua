@@ -452,6 +452,18 @@ end
 
 local pid_seq = 1000
 
+--- 删除当前 placement（保留图片数据；用于切换预览/擦除预览 buffer）
+local function clear_placement(st)
+  if st.img and st.pid then
+    local ok, snacks = pcall(require, "snacks.image")
+    local terminal = ok and snacks and snacks.terminal
+    if ok then
+      pcall(terminal.request, { a = "d", d = "i", i = st.img.id, p = st.pid })
+    end
+  end
+  st.placed = nil
+end
+
 --- 源矩形模式：图片只传一次，平移/缩放仅发放置请求（极廉价）；补边画布按需烘焙并缓存
 local function draw_rect(buf, st, base, view, W, H)
   local dims = st.src_dims
@@ -499,11 +511,14 @@ local function draw_rect(buf, st, base, view, W, H)
     close_placement(st.placement)
   end
   st.placement = nil
-  -- 换图：清理上一张图的 placement
-  if st.last_id and st.last_file ~= file then
-    pcall(terminal.request, { a = "d", d = "i", i = st.last_id, p = st.pid })
-  end
   st.pid = st.pid or (pid_seq + buf)
+  -- 换图：删除本 buffer 此前放置过的所有图片 id（切图先清旧，避免旧图残留/叠层）
+  for id in pairs(st.placed or {}) do
+    if id ~= img.id then
+      pcall(terminal.request, { a = "d", d = "i", i = id, p = st.pid })
+    end
+  end
+  st.placed = { [img.id] = true }
   st.last_id = img.id
   st.last_file = file
   st.canvas_file = file
@@ -952,6 +967,23 @@ function M.show(buf, src)
   end
   local st = state(buf)
   local ext = vim.fn.fnamemodify(src, ":e"):lower()
+  -- 预览 buffer 被擦除/重建时：删除 placement 并清理状态（删 buffer 不会清终端里的图）
+  if not vim.b[buf].nvkit_preview_watched then
+    vim.b[buf].nvkit_preview_watched = true
+    vim.api.nvim_create_autocmd("BufWipeout", {
+      buffer = buf,
+      once = true,
+      callback = function()
+        local s2 = states[buf]
+        if s2 then
+          clear_placement(s2)
+        end
+        states[buf] = nil
+      end,
+    })
+  end
+  clear_placement(st) -- 先删旧图：新图绘制失败/变慢时也不会显示错误的旧图
+  st.image_hidden = true
   st.orig = src
   st.src = src
   st.mode = ext == "pdf" and "pdf" or "image"
@@ -959,6 +991,7 @@ function M.show(buf, src)
   st.px, st.py = 0.5, 0.5
   st.page = 1
   st.pages = nil
+  st.retry = 0
   fetch_pages(buf, st)
   render(buf, st)
 end
