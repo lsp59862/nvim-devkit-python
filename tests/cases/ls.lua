@@ -67,5 +67,14 @@ lib.ok(":Ls 以通知展示且标题为 buffers", notified ~= nil and notified.t
   vim.inspect(notified and notified.title))
 lib.ok("通知内容包含相对路径", notified ~= nil and notified.msg:find("./src/main.py", 1, true) ~= nil,
   notified and notified.msg or "")
+lib.ok("通知底部包含标志位图例（% 当前 / # 轮换）",
+  notified ~= nil and notified.msg:find("% 当前", 1, true) ~= nil
+    and notified.msg:find("# 轮换", 1, true) ~= nil,
+  notified and notified.msg or "")
+lib.ok("图例覆盖常用状态（a 活动 / h 隐藏 / + 已修改）",
+  notified ~= nil and notified.msg:find("a 活动", 1, true) ~= nil
+    and notified.msg:find("h 隐藏", 1, true) ~= nil
+    and notified.msg:find("+ 已修改", 1, true) ~= nil,
+  notified and notified.msg or "")
 
 lib.finish()

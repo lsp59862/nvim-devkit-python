@@ -64,10 +64,15 @@ function M.lines(opts)
   return lines
 end
 
---- 以通知形式显示缓冲区列表
+local LEGEND = "% 当前 · # 轮换 · a 活动 · h 隐藏 · + 已修改 · - 未加载 · = 只读 · u 未列出"
+
+--- 以通知形式显示缓冲区列表（底部附图例）
 ---@param opts? { all?: boolean }
 function M.show(opts)
-  vim.notify(table.concat(M.lines(opts), "\n"), vim.log.levels.INFO, { title = "buffers" })
+  local lines = M.lines(opts)
+  lines[#lines + 1] = ""
+  lines[#lines + 1] = LEGEND
+  vim.notify(table.concat(lines, "\n"), vim.log.levels.INFO, { title = "buffers" })
 end
 
 function M.setup()
