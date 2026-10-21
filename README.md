@@ -243,15 +243,24 @@ Vim 的"模式 + 前缀键 + 寄存器"让误按后果难以预期。本配置�
 
 ## 主题与分屏清晰度
 
-默认主题是 **tokyonight night**。仓库另外装好了两套热门主题（只安装，**不会自动切换**，用 `:colorscheme` 手动试）：
+默认主题是 **nvkit-terminal**：直接采用终端自身的 16 色调色板（黑底、灰字、背景透明露出终端背景），和终端里 `ls`/提示符是同一套颜色。默认色板是 **WezTerm 自带默认色板**（背景 `#000000`、前景 `#b2b2b2`）：
+
+| 色板 | 适用 | 切换 |
+| --- | --- | --- |
+| wezterm（默认） | WezTerm 默认配色 | — |
+| campbell | Windows Terminal 默认配色 | `:lua vim.g.nvkit_terminal_palette="campbell"` 后 `:colorscheme nvkit-terminal` |
+
+仓库另外装好了三套热门主题（只安装，**不会自动切换**，用 `:colorscheme` 手动切；切回默认用 `:colorscheme nvkit-terminal`）：
 
 | 主题 | 试用命令 | 分屏增强 |
 | --- | --- | --- |
-| catppuccin | `:colorscheme catppuccin-mocha`（另有 `macchiato` / `frappe` / `latte`） | 已启用 `dim_inactive`（非当前窗口压暗） |
-| kanagawa | `:colorscheme kanagawa-wave`（另有 `dragon` / `lotus`） | 已启用 `dimInactive` |
-| tokyonight | `:colorscheme tokyonight-storm` / `tokyonight-day` | 可在 `config/lua/plugins/ui.lua` 的 opts 里加 `dim_inactive = true` |
+| catppuccin | `:colorscheme catppuccin-mocha`（另有 `macchiato` / `frappe` / `latte`） | 用本仓库统一的分屏增强 |
+| kanagawa | `:colorscheme kanagawa-wave`（另有 `dragon` / `lotus`） | 同上 |
+| tokyonight | `:colorscheme tokyonight` / `tokyonight-storm` / `tokyonight-day` | 同上 |
 
-**分屏增强默认已开启**：非当前窗口的背景、文字、行号、符号列、空白符区一起压暗，分界线加亮加粗——分屏后两个文件的层次一眼可辨，对任意主题生效。
+主题定义在 `config/colors/nvkit-terminal.vim` + `config/lua/nvim-devkit/colors/terminal.lua`（色板表在文件顶部；换终端配色后改这里，或复制一份 table 加新色板）。状态栏（lualine）自动跟随同款颜色。
+
+**分屏增强默认已开启**：非当前窗口压暗 + 分界线加亮加粗——分屏后两个文件的层次一眼可辨，对任意主题生效（透明主题只压暗文字，不画背景）。
 
 - 运行时开关：`:NvkitSplits`（再执行一次关闭）
 - 启动时关闭：`NVIM_DEVKIT_SPLITS=0 nvim-devkit`
@@ -262,7 +271,7 @@ Vim 的"模式 + 前缀键 + 寄存器"让误按后果难以预期。本配置�
   确认喜欢的数值后写进 `config/lua/config/autocmds.lua` 末尾即可持久化。
 - 单独控制：`:lua require("nvim-devkit.theme").dim_inactive(...)` / `.vivid_separator(...)`
 
-换默认主题：改 `config/lua/plugins/ui.lua` 里 tokyonight 的 `config` 一行，例如 `vim.cmd.colorscheme("catppuccin-mocha")`，然后提交推送、各服务器 `./install.sh --update`。
+换默认主题：改 `config/init.lua` 里的 `vim.cmd.colorscheme("nvkit-terminal")`，然后提交推送、各服务器 `./install.sh --update`。
 
 ## 依赖要求
 
@@ -278,7 +287,7 @@ Vim 的"模式 + 前缀键 + 寄存器"让误按后果难以预期。本配置�
 ## 行为测试
 
 ```bash
-./tests/run.sh           # 行为测试：38 个用例 / 253 项断言，必须全部通过
+./tests/run.sh           # 行为测试：39 个用例 / 271 项断言，必须全部通过
 scripts/checkhealth.sh   # 健康检查：硬错误必须为 0
 ```
 

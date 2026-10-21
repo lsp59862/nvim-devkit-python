@@ -33,10 +33,15 @@ end
 
 local function refresh_dim_group()
   local normal = vim.api.nvim_get_hl(0, { name = "Normal", link = false })
-  if not normal.bg then
-    return false
-  end
   local target = vim.o.background == "dark" and 0x000000 or 0xffffff
+  if not normal.bg then
+    -- 透明背景主题（如 nvkit-terminal）：只压暗文字，不画背景
+    if not normal.fg then
+      return false
+    end
+    vim.api.nvim_set_hl(0, dim_group, { fg = blend(normal.fg, target, M.options.fg_fade) })
+    return true
+  end
   local hl = { bg = blend(normal.bg, target, M.options.bg_fade) }
   if normal.fg then
     hl.fg = blend(normal.fg, normal.bg, M.options.fg_fade)

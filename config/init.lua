@@ -8,5 +8,7 @@ require("config.options")
 require("config.keymaps")
 require("config.autocmds")
 require("nvim-devkit.ls").setup()
+-- 默认主题：终端同款（色板可用 vim.g.nvkit_terminal_palette 切换 wezterm/campbell）
+vim.cmd.colorscheme("nvkit-terminal")
 require("nvim-devkit.term").setup()
 require("config.lazy")

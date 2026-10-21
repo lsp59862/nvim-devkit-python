@@ -18,10 +18,7 @@ return {
     lazy = false,
     priority = 1000,
     opts = { style = "night" },
-    config = function(_, opts)
-      require("tokyonight").setup(opts)
-      vim.cmd.colorscheme("tokyonight")
-    end,
+    -- 默认主题是 nvkit-terminal（见 config/init.lua）；用 :colorscheme tokyonight 可随时切回
   },
 
   -- 图标（snacks / lualine / render-markdown 共用）
