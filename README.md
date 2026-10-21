@@ -260,7 +260,7 @@ Vim 的"模式 + 前缀键 + 寄存器"让误按后果难以预期。本配置�
 | kanagawa | `:colorscheme kanagawa-wave`（另有 `dragon` / `lotus`） | 同上 |
 | tokyonight | `:colorscheme tokyonight` / `tokyonight-storm` / `tokyonight-day` | 同上 |
 
-主题定义在 `config/colors/nvkit-terminal.vim` + `config/lua/nvim-devkit/colors/terminal.lua`（色板表在文件顶部；换终端配色后改这里，或复制一份 table 加新色板）。状态栏（lualine）自动跟随同款颜色。
+主题定义在 `config/colors/nvkit-terminal.vim` + `config/lua/nvim-devkit/colors/terminal.lua`（色板表在文件顶部；换终端配色后改这里，或复制一份 table 加新色板）。状态栏（lualine）自动跟随同款颜色，最右侧显示当前时间（HH:MM，每 30 秒刷新一次）。
 
 **分屏增强默认已开启**：非当前窗口压暗 + 分界线加亮加粗——分屏后两个文件的层次一眼可辨，对任意主题生效（透明主题只压暗文字，不画背景）。
 
@@ -289,7 +289,7 @@ Vim 的"模式 + 前缀键 + 寄存器"让误按后果难以预期。本配置�
 ## 行为测试
 
 ```bash
-./tests/run.sh           # 行为测试：39 个用例 / 274 项断言，必须全部通过
+./tests/run.sh           # 行为测试：39 个用例 / 277 项断言，必须全部通过
 scripts/checkhealth.sh   # 健康检查：硬错误必须为 0
 ```
 

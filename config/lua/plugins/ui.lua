@@ -206,6 +206,10 @@ return {
         end
         return ""
       end
+      local function clock()
+        return os.date("%H:%M")
+      end
+
       local function opencode_status()
         -- 不触发懒加载：仅在 opencode 已加载时显示
         if package.loaded["opencode"] then
@@ -217,6 +221,15 @@ return {
           end
         end
         return ""
+      end
+      -- 状态栏时钟：lualine 不会自己按时间重绘，30 秒刷新一次（分钟精度足够）
+      if not vim.g.nvkit_clock_timer then
+        local timer = (vim.uv or vim.loop).new_timer()
+        timer:start(30000, 30000, vim.schedule_wrap(function()
+          pcall(vim.cmd, "redrawstatus")
+        end))
+        vim.g.nvkit_clock_timer = true
+        _G.__nvkit_clock_timer = timer
       end
       return {
         options = {
@@ -232,7 +245,7 @@ return {
           lualine_c = { { "filename", path = 1 } },
           lualine_x = { macro_rec, opencode_status, "diagnostics", "filetype" },
           lualine_y = { "progress" },
-          lualine_z = { "location" },
+          lualine_z = { "location", clock },
         },
       }
     end,

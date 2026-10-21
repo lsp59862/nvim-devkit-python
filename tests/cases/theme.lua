@@ -22,6 +22,12 @@ lib.eq("DiagnosticError 亮红", fg("DiagnosticError"), 0xe74856)
 lib.eq("Treesitter @keyword 与 Keyword 同色", fg("@keyword"), 0x881798)
 lib.eq("Treesitter @string 与 String 同色", fg("@string"), 0x13a10e)
 
+-- 状态栏模式块配色
+local ltheme = require("lualine.themes.nvkit-terminal")
+lib.eq("lualine normal 青", ltheme.normal.a.bg, "#3a96dd")
+lib.eq("lualine insert 绿", ltheme.insert.a.bg, "#13a10e")
+lib.eq("lualine terminal 蓝", ltheme.terminal.a.bg, "#0037da")
+
 -- 实色背景下的分屏压暗：背景+文字一起压暗
 require("nvim-devkit.theme").clear_splits(true, true)
 local dim = vim.api.nvim_get_hl(0, { name = "NvkitDimmed", link = false })
