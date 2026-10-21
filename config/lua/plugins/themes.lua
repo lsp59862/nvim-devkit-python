@@ -4,7 +4,7 @@
 --   :colorscheme kanagawa-wave | kanagawa-dragon | kanagawa-lotus
 --   :colorscheme tokyonight-storm | tokyonight-day
 -- 想设为默认：把 config/init.lua 里的 vim.cmd.colorscheme("nvkit-terminal") 改成想要的名字
--- 终端同款主题的色板：vim.g.nvkit_terminal_palette = "wezterm" | "campbell"
+-- 终端同款主题的色板（默认 campbell）：vim.g.nvkit_terminal_palette = "wezterm" | "campbell"
 return {
   {
     "catppuccin/nvim",

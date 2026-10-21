@@ -238,7 +238,7 @@ return config
 | 键位 | `config/lua/config/keymaps.lua` |
 | 自动命令 | `config/lua/config/autocmds.lua` |
 | 插件（增删改） | `config/lua/plugins/*.lua`（按功能拆分） |
-| 主题 | 默认 `nvkit-terminal`（终端同款色板、透明背景）：`config/colors/nvkit-terminal.vim` + `config/lua/nvim-devkit/colors/terminal.lua`；切其他主题 `:colorscheme tokyonight` / `catppuccin-mocha` / `kanagawa-wave`，切回 `:colorscheme nvkit-terminal`；Windows Terminal 色板 `:lua vim.g.nvkit_terminal_palette="campbell"` 后重新 `:colorscheme nvkit-terminal` |
+| 主题 | 默认 `nvkit-terminal`（Campbell 色板、`#0c0c0c` 实色灰底）：`config/colors/nvkit-terminal.vim` + `config/lua/nvim-devkit/colors/terminal.lua`；切其他主题 `:colorscheme tokyonight` / `catppuccin-mocha` / `kanagawa-wave`，切回 `:colorscheme nvkit-terminal`；换 WezTerm 色板 `:lua vim.g.nvkit_terminal_palette="wezterm"`；透明背景 `:lua vim.g.nvkit_terminal_transparent=true`（都要再 `:colorscheme nvkit-terminal`） |
 | 恐慌恢复/PDF 等自研模块 | `config/lua/nvim-devkit/*.lua` |
 
 加插件模板：

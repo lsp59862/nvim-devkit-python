@@ -243,12 +243,14 @@ Vim 的"模式 + 前缀键 + 寄存器"让误按后果难以预期。本配置�
 
 ## 主题与分屏清晰度
 
-默认主题是 **nvkit-terminal**：直接采用终端自身的 16 色调色板（黑底、灰字、背景透明露出终端背景），和终端里 `ls`/提示符是同一套颜色。默认色板是 **WezTerm 自带默认色板**（背景 `#000000`、前景 `#b2b2b2`）：
+默认主题是 **nvkit-terminal**：直接采用终端自身的 16 色调色板（灰底、灰字、终端同款配色），和终端里 `ls`/提示符是同一套颜色。默认色板是 **Campbell**（Windows Terminal 默认配色，背景 `#0c0c0c`、前景 `#cccccc`）：
 
 | 色板 | 适用 | 切换 |
 | --- | --- | --- |
-| wezterm（默认） | WezTerm 默认配色 | — |
-| campbell | Windows Terminal 默认配色 | `:lua vim.g.nvkit_terminal_palette="campbell"` 后 `:colorscheme nvkit-terminal` |
+| campbell（默认） | Windows Terminal 默认配色 | — |
+| wezterm | WezTerm 自带默认配色（背景 `#000000`、前景 `#b2b2b2`） | `:lua vim.g.nvkit_terminal_palette="wezterm"` 后 `:colorscheme nvkit-terminal` |
+
+背景默认用色板的**实色**（Campbell 的 `#0c0c0c` 灰底会出现）；想要透明、露出终端背景：`:lua vim.g.nvkit_terminal_transparent=true` 后 `:colorscheme nvkit-terminal`（写进 `config/init.lua` 可持久化）。
 
 仓库另外装好了三套热门主题（只安装，**不会自动切换**，用 `:colorscheme` 手动切；切回默认用 `:colorscheme nvkit-terminal`）：
 
@@ -287,7 +289,7 @@ Vim 的"模式 + 前缀键 + 寄存器"让误按后果难以预期。本配置�
 ## 行为测试
 
 ```bash
-./tests/run.sh           # 行为测试：39 个用例 / 271 项断言，必须全部通过
+./tests/run.sh           # 行为测试：39 个用例 / 274 项断言，必须全部通过
 scripts/checkhealth.sh   # 健康检查：硬错误必须为 0
 ```
 

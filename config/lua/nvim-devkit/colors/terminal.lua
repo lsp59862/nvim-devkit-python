@@ -1,6 +1,7 @@
 -- 终端同款配色 nvkit-terminal
--- 色板来自终端自身的 16 色（默认 WezTerm 自带色板；campbell 为 Windows Terminal 默认）
--- 切换：:lua vim.g.nvkit_terminal_palette = "campbell" | :colorscheme nvkit-terminal
+-- 色板来自终端自身的 16 色：默认 campbell（Windows Terminal 默认，背景 #0c0c0c）
+-- 切换色板：:lua vim.g.nvkit_terminal_palette = "wezterm" | :colorscheme nvkit-terminal
+-- 背景默认用色板实色；想透明露出终端背景：:lua vim.g.nvkit_terminal_transparent = true
 local M = {}
 
 local palettes = {
@@ -48,7 +49,7 @@ local palettes = {
   },
 }
 
-local DEFAULT_PALETTE = "wezterm"
+local DEFAULT_PALETTE = "campbell"
 
 local function hex(c)
   return tonumber((c:gsub("#", "")), 16)
@@ -101,10 +102,15 @@ function M.load()
   vim.o.background = "dark"
   vim.o.termguicolors = true
   vim.g.colors_name = "nvkit-terminal"
-  vim.api.nvim_set_hl(0, "Normal", { fg = p.fg })
+  local transparent = vim.g.nvkit_terminal_transparent == true
+  local normal_bg = p.bg
+  if transparent then
+    normal_bg = nil
+  end
+  vim.api.nvim_set_hl(0, "Normal", { fg = p.fg, bg = normal_bg })
   -- 编辑器界面
   local groups = {
-    NormalNC = { fg = p.fg },
+    NormalNC = { fg = p.fg, bg = normal_bg },
     NormalFloat = { fg = p.fg, bg = p.bg },
     FloatBorder = { fg = p.gray, bg = p.bg },
     FloatTitle = { fg = p.white, bg = p.bg, bold = true },
