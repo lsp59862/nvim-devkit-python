@@ -83,7 +83,7 @@ do
   local orig_req7 = require("snacks.image").terminal.request
   Snacks.image.terminal.request = function(opts)
     if type(opts) == "table" and (opts.a == "p" or opts.a == "d") then
-      events[#events + 1] = { a = opts.a, i = opts.i }
+      events[#events + 1] = { a = opts.a, d = opts.d, i = opts.i }
     end
     return orig_req7(opts)
   end
@@ -102,6 +102,14 @@ do
   end
   lib.ok("切到文本预览时删除图片 placement（防旧图残留）",
     cur_id ~= nil and deleted, ("cur=%s events=%s"):format(tostring(cur_id), vim.inspect(events)))
+  local freed = false
+  for _, e in ipairs(events) do
+    if e.a == "d" and e.d == "I" and e.i == cur_id then
+      freed = true
+    end
+  end
+  lib.ok("切图时释放旧位图数据（d=I，内存不等预算回收）", cur_id ~= nil and freed,
+    ("cur=%s events=%s"):format(tostring(cur_id), vim.inspect(events)))
   Snacks.image.terminal.request = orig_req7
 end
 

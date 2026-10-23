@@ -299,8 +299,23 @@ end
 --- 放置图片：先创建新 placement、稍后再撤旧 placement（避免"先清后画"的空白帧闪烁）。
 --- 旧 placement 的自动更新会立即停用：WezTerm #7953 中每次 a=p 都会重复累积图片附件
 --- （quad 数爆炸 → 崩溃），必须把重定位次数压到最低。
+--- 释放终端里的位图数据（大写 d=I）。
+--- 注意：小写 d=i 只摘 placement，解码后的数据会一直留到 WezTerm 的 320MiB 预算回收；
+--- 主动释放才能把内存真正降下来。释放后 sent=false，下次显示会自动重传。
+local function free_image(img)
+  if not (img and img.id) then
+    return
+  end
+  local ok, snacks = pcall(require, "snacks.image")
+  local terminal = ok and snacks and snacks.terminal
+  if terminal then
+    pcall(terminal.request, { a = "d", d = "I", i = img.id })
+  end
+  img.sent = false
+end
+
 --- 关闭一个旧 placement：立刻停其自动更新；延迟用正确 id 显式删除后 close
-local function close_placement(old)
+local function close_placement(old, free)
   -- 立刻停掉旧 placement 的自动更新（防止其继续发 a=p 加剧 WezTerm #7953 的附件累积）
   pcall(vim.api.nvim_del_augroup_by_id, old.augroup)
   vim.defer_fn(function()
@@ -310,6 +325,9 @@ local function close_placement(old)
     local ok_term, terminal = pcall(require, "snacks.image.terminal")
     if ok_term and terminal and old.img then
       pcall(terminal.request, { a = "d", d = "i", i = old.img.id, p = old.id })
+    end
+    if free and old.img then
+      free_image(old.img) -- 被替换的旧画布/旧源图不再需要
     end
     pcall(function()
       old:close()
@@ -338,13 +356,13 @@ local function place_impl(buf, st, file)
   if st.placement then
     olds[#olds + 1] = st.placement
   end
-  -- 从源矩形模式切换过来：删除查看器自己的旧放置（数据保留）
+  -- 从源矩形模式切换过来：只摘旧 placement，保留源图数据
+  -- （放大回源矩形模式时无需重传；内存已由 nvkit_viewer_max_pixels 上限约束）
   if st.img and st.pid then
     local ok_t, terminal = pcall(require, "snacks.image.terminal")
     if ok_t then
       pcall(terminal.request, { a = "d", d = "i", i = st.img.id, p = st.pid })
     end
-    st.img = nil
     st.last_id = nil
     st.last_file = nil
   end
@@ -388,7 +406,8 @@ local function place_impl(buf, st, file)
 
   for _, old in ipairs(olds) do
     if old ~= st.placement then
-      close_placement(old)
+      -- 旧画布释放数据；源图（st.img）保留，放大回源矩形模式无需重传
+      close_placement(old, old.img ~= st.img)
     end
   end
 end
@@ -427,6 +446,47 @@ local function position_cursor(buf)
   end
 end
 
+--- 大图传输前降采样：终端按解码后的 RGBA 计内存（宽×高×4 字节），
+--- 全分辨率传输一张 4000×3000 照片就是 48MB。默认上限 8MP（约 32MB RGBA），
+--- 可用 vim.g.nvkit_viewer_max_pixels 调整（0 = 不限制）。
+local function bounded_base(file, dims)
+  local cap = tonumber(vim.g.nvkit_viewer_max_pixels)
+  if cap == nil then
+    cap = 8 * 1024 * 1024
+  end
+  if cap <= 0 or not dims.width or not dims.height then
+    return file, dims
+  end
+  if dims.width * dims.height <= cap then
+    return file, dims
+  end
+  local cmd = magick()
+  if not cmd then
+    return file, dims
+  end
+  local scale = math.sqrt(cap / (dims.width * dims.height))
+  local tw = math.max(1, math.floor(dims.width * scale))
+  local th = math.max(1, math.floor(dims.height * scale))
+  local key = vim.fn.sha256(("%s|bounded|%d"):format(file, cap)):sub(1, 16)
+  local out = ("%s/%s.png"):format(cache_dir(), key)
+  if vim.fn.filereadable(out) == 0 then
+    local res = vim.system({
+      cmd,
+      file,
+      "-resize", ("%dx%d!"):format(tw, th),
+      "+repage",
+      "-strip",
+      "-define", "png:compression-level=1",
+      out,
+    }, { text = true }):wait(30000)
+    if res.code ~= 0 then
+      return file, dims
+    end
+  end
+  local ok, ndims = pcall(require("snacks.image").util.dim, out)
+  return out, (ok and ndims) or { width = tw, height = th }
+end
+
 --- 确保 file 对应的图片对象存在（同步预发送；未就绪时延迟重试渲染）
 local function ensure_image(buf, st, file)
   if st.img and st.img.file == file and st.img.sent then
@@ -434,6 +494,9 @@ local function ensure_image(buf, st, file)
   end
   local img = presend(file)
   if img then
+    if st.img and st.img ~= img then
+      free_image(st.img) -- 换图：上一张的位图数据不再需要
+    end
     st.img = img
     return img
   end
@@ -452,13 +515,33 @@ end
 
 local pid_seq = 1000
 
---- 删除当前 placement（保留图片数据；用于切换预览/擦除预览 buffer）
+--- 结束当前查看：删除 placement 并释放位图数据（切换预览/擦除预览 buffer/关闭查看器）
+--- 只用于"不再显示"；暂时隐藏用 hide_image（保留数据便于秒恢复）
 local function clear_placement(st)
-  if st.img and st.pid then
-    local ok, snacks = pcall(require, "snacks.image")
-    local terminal = ok and snacks and snacks.terminal
-    if ok then
-      pcall(terminal.request, { a = "d", d = "i", i = st.img.id, p = st.pid })
+  local ok, snacks = pcall(require, "snacks.image")
+  local terminal = ok and snacks and snacks.terminal
+  if st.img and st.pid and terminal then
+    -- 先摘 placement（小写 i + 正确 placement id），再释放数据（大写 I）
+    pcall(terminal.request, { a = "d", d = "i", i = st.img.id, p = st.pid })
+  end
+  if st.img then
+    free_image(st.img)
+    st.img = nil
+  end
+  if st.placement and not st.placement.closed then
+    local p = st.placement
+    st.placement = nil
+    if terminal and p.img then
+      pcall(terminal.request, { a = "d", d = "i", i = p.img.id, p = p.id })
+      free_image(p.img)
+    end
+    pcall(function()
+      p:close()
+    end)
+  end
+  for _, im in pairs(st.placed or {}) do
+    if im ~= st.img then
+      free_image(im)
     end
   end
   st.placed = nil
@@ -512,13 +595,15 @@ local function draw_rect(buf, st, base, view, W, H)
   end
   st.placement = nil
   st.pid = st.pid or (pid_seq + buf)
-  -- 换图：删除本 buffer 此前放置过的所有图片 id（切图先清旧，避免旧图残留/叠层）
-  for id in pairs(st.placed or {}) do
+  -- 换图：删除本 buffer 此前放置过的所有图片（切图先清旧，避免旧图残留/叠层），
+  -- 并释放旧图的位图数据（只挂 placement 会一直占着终端内存）
+  for id, old in pairs(st.placed or {}) do
     if id ~= img.id then
       pcall(terminal.request, { a = "d", d = "i", i = id, p = st.pid })
+      free_image(old)
     end
   end
-  st.placed = { [img.id] = true }
+  st.placed = { [img.id] = img }
   st.last_id = img.id
   st.last_file = file
   st.canvas_file = file
@@ -557,13 +642,14 @@ local function render(buf, st)
   if type(base) ~= "string" then
     return
   end
-  st.src = base
-
   local okdim, dims = pcall(snacks.util.dim, base)
   if not okdim or not dims then
+    st.src = base
     place(buf, st, base) -- 转换未完成（如 PDF 首页）：普通放置，完成后再补
     return
   end
+  base, dims = bounded_base(base, dims)
+  st.src = base -- 记降采样后的实际传输路径
   st.src_dims = dims
 
   local okgeom, W, H, cw, ch = pcall(canvas_geom, buf)
@@ -943,17 +1029,8 @@ function M.close(buf, wipe)
   local st = states[buf]
   if st then
     cancel_replace(st)
-    if st.img and st.pid then
-      local ok, terminal = pcall(require, "snacks.image.terminal")
-      if ok then
-        pcall(terminal.request, { a = "d", d = "i", i = st.img.id, p = st.pid })
-      end
-    end
-  end
-  if st and st.placement and not st.placement.closed then
-    pcall(function()
-      st.placement:close()
-    end)
+    clear_placement(st) -- 删 placement + 释放终端位图数据（内存不再等 320MiB 预算回收）
+    st.image_hidden = true
   end
   if wipe and vim.api.nvim_buf_is_valid(buf) then
     pcall(vim.api.nvim_buf_delete, buf, { force = true })
@@ -1078,6 +1155,9 @@ function M.attach(buf)
         buffer = buf,
         once = true,
         callback = function()
+          if states[buf] then
+            clear_placement(states[buf]) -- 擦除 buffer：释放终端位图数据
+          end
           states[buf] = nil
           pcall(vim.api.nvim_del_augroup_by_id, aug)
         end,

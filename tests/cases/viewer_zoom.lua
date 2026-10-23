@@ -202,11 +202,14 @@ end
 do
   reset()
   vim.wait(300)
-  local ad = 0
+  local ad, freed = 0, 0
   local orig_req6 = require("snacks.image").terminal.request
   Snacks.image.terminal.request = function(opts)
     if type(opts) == "table" and opts.a == "d" then
       ad = ad + 1
+      if opts.d == "I" then
+        freed = freed + 1
+      end
     end
     return orig_req6(opts)
   end
@@ -217,6 +220,8 @@ do
   vim.wait(400)
   lib.ok("离开图片窗口时删除 placement（防旧图残留叠加）", ad >= 1,
     "ad=" .. tostring(ad))
+  lib.ok("暂时隐藏只摘 placement、保留位图数据（回来秒恢复）", freed == 0,
+    "freed=" .. tostring(freed))
   vim.api.nvim_win_set_buf(win, buf)
   vim.wait(600)
   Snacks.image.terminal.request = orig_req6
@@ -411,6 +416,52 @@ do
   end, 50)
   Snacks.image.terminal.request = orig_req2
   lib.ok("离开命令行且界面清空后图片恢复", done and ap >= 1, ("ap=%d ad=%d"):format(ap, ad))
+end
+
+-- 大图传输入口降采样：终端按解码后的 RGBA 计内存，超过上限先缩图再传
+do
+  reset()
+  vim.wait(300)
+  vim.g.nvkit_viewer_max_pixels = 400000
+  reset() -- 触发重新渲染（zoom=1）
+  vim.wait(1500, function()
+    return st.src_dims ~= nil and st.src_dims.width * st.src_dims.height <= 500000
+  end, 20)
+  lib.ok("超过像素上限时先降采样再传输",
+    st.src_dims ~= nil and st.src_dims.width * st.src_dims.height <= 500000 and st.src ~= png,
+    ("dims=%s src=%s"):format(vim.inspect(st.src_dims), tostring(st.src)))
+  vim.g.nvkit_viewer_max_pixels = nil
+  reset()
+  vim.wait(1500, function()
+    return st.src_dims ~= nil and st.src_dims.width == 1200
+  end, 20)
+  lib.ok("取消上限后恢复原图尺寸", st.src_dims ~= nil and st.src_dims.width == 1200,
+    vim.inspect(st.src_dims))
+end
+
+-- 关闭查看器：释放终端位图数据（大写 d=I），内存不再等 WezTerm 预算回收
+do
+  local img = st.img
+  local ops = {}
+  local orig_req8 = require("snacks.image").terminal.request
+  Snacks.image.terminal.request = function(opts)
+    if type(opts) == "table" and opts.a == "d" then
+      ops[#ops + 1] = { d = opts.d, i = opts.i }
+    end
+    return orig_req8(opts)
+  end
+  viewer.close(buf, true)
+  vim.wait(150)
+  Snacks.image.terminal.request = orig_req8
+  local freed = false
+  for _, o in ipairs(ops) do
+    if o.d == "I" and img and o.i == img.id then
+      freed = true
+    end
+  end
+  lib.ok("关闭查看器释放位图数据（d=I，sent=false）",
+    freed and img ~= nil and img.sent == false,
+    ("ops=%s sent=%s"):format(vim.inspect(ops), tostring(img and img.sent)))
 end
 
 vim.cmd("silent! %bwipeout!")
