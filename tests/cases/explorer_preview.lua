@@ -129,6 +129,81 @@ do
     ("bc=%s bd=%s"):format(tostring(bc), tostring(bd)))
 end
 
+-- 回归：<CR> 与 l 行为一致（统一走 explorer.confirm）
+-- 目录：无论是否预览模式都展开/折叠（picker:action("confirm")），不触发预览
+local function fake_picker(item)
+  local acts = {}
+  local pk = {
+    current = function()
+      return item
+    end,
+    action = function(_, name)
+      acts[#acts + 1] = name
+    end,
+  }
+  return pk, acts
+end
+
+explorer.mode = true
+local fdir = lib.dir() .. "/preview_dir"
+vim.fn.mkdir(fdir, "p")
+local pk_dir, acts_dir = fake_picker({ file = fdir, dir = true })
+local buf_before = explorer.buf
+explorer.confirm(pk_dir)
+vim.wait(150)
+lib.ok("预览模式下对目录 <CR>/l → 展开/折叠（不是预览）",
+  acts_dir[1] == "confirm" and explorer.buf == buf_before,
+  ("acts=%s buf=%s→%s"):format(vim.inspect(acts_dir), tostring(buf_before), tostring(explorer.buf)))
+
+-- 文件 + 预览模式：只预览，不调用 confirm（不打开、不移焦点）
+local ffile = lib.dir() .. "/preview_key.lua"
+vim.fn.writefile({ "print('key')" }, ffile)
+local pk_file, acts_file = fake_picker({ file = ffile })
+explorer.confirm(pk_file)
+vim.wait(300)
+lib.ok("预览模式下对文件 <CR>/l → 预览、不打开",
+  #acts_file == 0 and explorer.buf ~= nil
+    and vim.api.nvim_buf_get_lines(explorer.buf, 0, 1, false)[1] == "print('key')",
+  ("acts=%s buf=%s"):format(vim.inspect(acts_file), tostring(explorer.buf)))
+lib.ok("预览模式下 <CR>/l 不移动焦点", vim.api.nvim_get_current_win() == parent,
+  tostring(vim.api.nvim_get_current_win()))
+
+-- 文件 + 正常模式：打开（confirm）并清掉预览
+explorer.mode = false
+local pk_norm, acts_norm = fake_picker({ file = ffile })
+explorer.confirm(pk_norm)
+vim.wait(100)
+lib.ok("正常模式下对文件 <CR>/l → 打开并清理预览",
+  acts_norm[1] == "confirm" and not (explorer.buf and vim.api.nvim_buf_is_valid(explorer.buf)),
+  ("acts=%s buf=%s"):format(vim.inspect(acts_norm), tostring(explorer.buf)))
+explorer.mode = true
+
+-- 键位接线：真实 picker 的 list 键里 l 是我们的函数（不是默认 "confirm"）
+local real = explorer.open({ layout = { preset = "sidebar", preview = false } })
+vim.wait(500, function()
+  return real ~= nil and real.opts ~= nil
+end, 20)
+lib.ok("文件树 list 键 l 已接管道 confirm（函数）",
+  real ~= nil and real.opts ~= nil and type(real.opts.win.list.keys["l"]) == "function",
+  type(real ~= nil and real.opts and real.opts.win and real.opts.win.list.keys["l"]))
+-- 预览模式指示器：自定义 toggle 注册 + 跟随模式开关
+lib.ok("标题栏注册预览模式指示器",
+  real ~= nil and real.opts ~= nil and real.opts.toggles ~= nil
+    and real.opts.toggles.nvkit_preview ~= nil and real.opts.nvkit_preview == true,
+  vim.inspect(real and real.opts and real.opts.toggles))
+if real then
+  explorer.toggle(real) -- 关闭预览模式 → 指示器应消失
+  lib.ok("关闭预览模式后指示器消失（opts 标记 false）",
+    real.opts.nvkit_preview == false, tostring(real.opts.nvkit_preview))
+  explorer.mode = true -- 恢复，供后续“关闭预览模式 → 清理”断言使用
+end
+if real then
+  pcall(function()
+    real:close()
+  end)
+end
+vim.wait(100)
+
 -- 关闭预览模式 → 清理
 explorer.toggle(nil)
 vim.wait(100)

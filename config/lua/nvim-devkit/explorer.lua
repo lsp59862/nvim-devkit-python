@@ -1,6 +1,7 @@
 -- 文件浏览器（snacks explorer）的预览模式：
---   <A-p> 切换；开启后选中/点击文件即在"原窗口"预览（单一可复用 buffer，焦点留在文件树）
---   支持文本 / 图片 / PDF（图片/PDF 走查看器）；<CR> 在预览模式只预览、正常模式打开并清场。
+--   <A-p> 切换；开启后 <CR> / l / 双击 在"原窗口"预览（单一可复用 buffer，焦点留在文件树）
+--   支持文本 / 图片 / PDF（图片/PDF 走查看器）
+--   <CR> 与 l 行为始终一致：目录 → 展开/折叠；文件 → 预览模式只预览、正常模式打开并清场。
 --   预览 buffer（unlisted/nofile）在以下情况自动删除：关闭预览模式、正常打开文件、
 --   文本预览被修改、父窗口关闭。
 local M = {}
@@ -14,6 +15,10 @@ M.updating = false
 M.prev_buf = nil -- 预览前父窗口里的 buffer（删除预览 buffer 前先切回，避免窗口被关）
 
 local PREVIEW_NAME = "nvkit://preview"
+local TOGGLE_HL = "SnacksPickerToggleNvkitPreview"
+
+-- 预览模式指示器文字颜色：跟随主题的 DiagnosticInfo（失败则用标题色兜底）
+vim.api.nvim_set_hl(0, TOGGLE_HL, { link = "DiagnosticInfo" })
 
 local IMAGE_EXT = { "png", "jpg", "jpeg", "webp", "gif", "bmp", "tif", "tiff" }
 
@@ -200,9 +205,39 @@ function M.preview_item(_picker, item)
   end, 40)
 end
 
+--- 确认键统一行为（<CR> / l / 双击）：
+--- 目录 → 总是展开/折叠（与预览模式无关）；文件 → 预览模式只预览，正常模式打开并清场
+function M.confirm(picker)
+  local cur = picker and picker:current()
+  if not cur then
+    return
+  end
+  if cur.dir then
+    picker:action("confirm")
+    return
+  end
+  if M.mode then
+    M.preview_item(picker, cur)
+    return
+  end
+  M.clear()
+  picker:action("confirm")
+end
+
 --- 切换预览模式
+local function update_indicator(picker)
+  if not (picker and picker.opts) then
+    return
+  end
+  picker.opts.nvkit_preview = M.mode
+  if type(picker.update_titles) == "function" then
+    pcall(picker.update_titles, picker)
+  end
+end
+
 function M.toggle(picker)
   M.mode = not M.mode
+  update_indicator(picker)
   if M.mode then
     notify("预览模式开（<A-p> 关闭；<CR> 预览选中项）")
     local cur = picker and picker:current()
@@ -220,20 +255,13 @@ function M.open(opts)
   M.parent = vim.api.nvim_get_current_win()
   local picker
   local function confirm()
-    if M.mode then
-      -- 预览模式：回车只预览，不打开、不关文件树
-      local cur = picker and picker:current()
-      if cur then
-        M.preview_item(picker, cur)
-      end
-      return
-    end
-    M.clear()
-    if picker then
-      picker:action("confirm")
-    end
+    M.confirm(picker)
   end
   local merged = vim.tbl_deep_extend("force", opts or {}, {
+    -- 预览模式指示器：显示在标题栏 {flags} 处（有颜色，且带图标与文字）
+    toggles = {
+      nvkit_preview = { icon = "󰈈 预览中", value = true },
+    },
     on_change = function(p, item)
       M.picker = p
       M.on_change(p, item)
@@ -260,6 +288,9 @@ function M.open(opts)
           ["<CR>"] = function()
             confirm()
           end,
+          ["l"] = function()
+            confirm()
+          end,
           ["<2-LeftMouse>"] = function()
             confirm()
           end,
@@ -268,6 +299,7 @@ function M.open(opts)
     },
   })
   picker = require("snacks").explorer(merged)
+  update_indicator(picker)
   return picker
 end
 

@@ -26,7 +26,7 @@ cd ~/nvim-devkit
 - nvim 可执行文件查找顺序：`NVIM_DEVKIT_BIN` 环境变量 → `~/.local/share/nvim-devkit/nvim/bin/nvim` → PATH 中的 `nvim`
 - 失败时完整日志留在 `/tmp/nvim-devkit-tests/log-<用例>.txt`
 
-## 覆盖范围（39 个用例 / 277 项断言）
+## 覆盖范围（39 个用例 / 284 项断言）
 
 | 用例 | 覆盖行为 |
 | --- | --- |
@@ -58,7 +58,7 @@ cd ~/nvim-devkit
 | `dashboard_keys` | 启动页按键契约：`r` = 恢复会话（persistence.load）· `q` = `:q`（防回退到 snacks 默认的 `<cmd>bd`）· buffer 内映射存在 |
 | `explorer_all_files` | 文件树默认显示所有文件：被 `.gitignore` 忽略的 `result/`（ignored 标记加载后仍可见）· 点文件 · 普通文件；`explorer` 与 `files` 数据源默认 `hidden+ignored` |
 | `viewer_keys` | 查看器：等比缩放纯函数 `_plan`（z=1 整图居中 / 2x 中心取景 / 平移夹紧 / z<1 整图缩小居中 / 正方形图 x/y 等比系数一致）· 渲染命令 `_render_cmd` 结构（透明画布+裁剪+缩放+按落点合成）· pdfinfo 页数解析 · `ft=image` 在普通窗口显示（无浮窗、不额外开窗）并安装图片键位（q/±/0/滚轮/hjkl，无翻页）· `q` 关闭并删除 buffer · PDF 键位（`]p/[p`、滚轮翻页、`<leader>rt` 切文本）· 逃生阀（`vim.g.nvkit_viewer_wheel=0` 时滚轮为空操作、不缩放不渲染）· 环境降级（PATH 无 ImageMagick 时普通放置源图、缩放不生效且不重建 placement）· 单元格尺寸兜底（终端未上报像素尺寸时按默认 9×18 估算补边几何，断言与 `_view` 纯函数一致；`vim.g.nvkit_viewer_cell_w/_h` 手动指定）· 初始不留 snacks 源图 placement（防"一开始霸屏"） |
-| `explorer_preview` | 文件树预览模式：文本预览显示在父窗口且不切焦点 · 移动选择不自动预览（`<CR>` 才预览）· 预览 buffer 不列出 · 文本/图片复用同一 buffer · 文本预览被修改后自动删除 · 图片预览走查看器（预览 buffer 不挂 ft=image 键位/钩子，避免与文件树窗口生命周期冲突）· 手动关闭预览 buffer 后可继续预览（新 buffer）· 切图/切文本预览时删除旧 placement（防旧图残留叠加）· 关闭预览模式清理 |
+| `explorer_preview` | 文件树预览模式：文本预览显示在父窗口且不切焦点 · 移动选择不自动预览（`<CR>` 才预览）· 预览 buffer 不列出 · 文本/图片复用同一 buffer · 文本预览被修改后自动删除 · 图片预览走查看器（预览 buffer 不挂 ft=image 键位/钩子，避免与文件树窗口生命周期冲突）· 手动关闭预览 buffer 后可继续预览（新 buffer）· 切图/切文本预览时删除旧 placement（防旧图残留叠加）· 目录上 `<CR>`/`l` 展开/折叠（两种模式一致）· 标题栏预览模式指示器随开关更新· 关闭预览模式清理 |
 | `theme` | 默认 `nvkit-terminal` + Campbell 色板 · `Normal` 前景 `#cccccc` / 背景 `#0c0c0c`（实色）· String/Number/Keyword/Function/Search 颜色 · Treesitter 捕获同色 · 实色背景下压暗背景与文字 · 可切到 tokyonight/切回 · wezterm 色板 · 透明选项 |
 | `ls` | `:ls` 缓冲区列表：cwd 内 `./` 相对路径 · 同名文件保留区分目录（`./v7.4/…/train.log` vs `./v7.5/…/train.log`）· 工作目录外绝对路径 · `%` 当前 buffer 标记 · `:Ls` 通知标题为 `buffers` · 通知底部标志位图例 |
 | `pathfmt` | 路径显示：cwd 下加 `./` 前缀 · 家目录 `~` 前缀 · 长路径缩略（`./…/masks/mask.jpg`，保留文件名与唯一后缀、不超预算）· 同名文件去歧义（保留各自不同的目录段）· `buffer_label` 从 buffer 列表自动收集同名兄弟 |
