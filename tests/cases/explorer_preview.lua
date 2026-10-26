@@ -199,6 +199,11 @@ lib.ok("标题栏注册预览模式指示器",
   real ~= nil and real.opts ~= nil and real.opts.toggles ~= nil
     and real.opts.toggles.nvkit_preview ~= nil and real.opts.nvkit_preview == true,
   vim.inspect(real and real.opts and real.opts.toggles))
+lib.ok("路径复制键位已接入（y 绝对 / Y 相对，覆盖默认 explorer_yank）",
+  real ~= nil and real.opts ~= nil
+    and real.opts.win.list.keys["y"] ~= nil and real.opts.win.list.keys["y"] ~= "explorer_yank"
+    and real.opts.win.list.keys["Y"] ~= nil,
+  vim.inspect(real and real.opts and { y = real.opts.win.list.keys["y"], Y = real.opts.win.list.keys["Y"] }))
 if real then
   explorer.toggle(real) -- 关闭预览模式 → 指示器应消失
   lib.ok("关闭预览模式后指示器消失（opts 标记 false）",
@@ -211,6 +216,48 @@ if real then
   end)
 end
 vim.wait(100)
+
+-- 路径复制：y=绝对 / Y=相对（相对 nvim 工作目录），多选每行一个
+do
+  local fa = lib.dir() .. "/yank_a.lua"
+  local fbb = lib.dir() .. "/yank_b.lua"
+  vim.fn.writefile({ "a" }, fa)
+  vim.fn.writefile({ "b" }, fbb)
+  local items = { { file = fa }, { file = fbb } }
+  local fp = {
+    selected = function()
+      return items
+    end,
+    list = { select = function() end, set_selected = function() end },
+  }
+  local abs = explorer.paths(fp, false)
+  lib.ok("路径复制：绝对路径（多选两项）", #abs == 2 and abs[1] == fa and abs[2] == fbb,
+    vim.inspect(abs))
+
+  local oldcwd = vim.fn.getcwd()
+  vim.cmd("cd " .. vim.fn.fnameescape(lib.dir()))
+  local rel1, rel2 = vim.fn.fnamemodify(fa, ":."), vim.fn.fnamemodify(fbb, ":.")
+  local rel = explorer.paths(fp, true)
+  vim.cmd("cd " .. vim.fn.fnameescape(oldcwd))
+  lib.ok("路径复制：相对 nvim 工作目录（多选两行）",
+    #rel == 2 and rel[1] == rel1 and rel[2] == rel2 and rel1 ~= fa,
+    vim.inspect(rel))
+
+  -- 写入系统剪贴板 +（SSH 下走 OSC52）：用 stub provider 捕获
+  local captured = nil
+  local old_cb, old_gcb = vim.o.clipboard, vim.g.clipboard
+  vim.o.clipboard = "unnamedplus"
+  vim.g.clipboard = {
+    name = "stub",
+    copy = { ["+"] = function(lines) captured = table.concat(lines, "\n") end, ["*"] = function() end },
+    paste = { ["+"] = function() return { "" } end, ["*"] = function() return { "" } end },
+  }
+  explorer.yank(fp, false)
+  vim.o.clipboard, vim.g.clipboard = old_cb, old_gcb
+  local normalized = captured and captured:gsub("\n$", "") or nil
+  lib.ok("路径复制：写入系统剪贴板 +（两行绝对路径）",
+    normalized == fa .. "\n" .. fbb, vim.inspect(captured))
+end
 
 -- 关闭预览模式 → 清理
 explorer.toggle(nil)

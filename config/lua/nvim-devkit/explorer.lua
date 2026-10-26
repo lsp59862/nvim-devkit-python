@@ -205,6 +205,55 @@ function M.preview_item(_picker, item)
   end, 40)
 end
 
+--- 选中项路径列表（支持可视多选；relative=true 时相对 nvim 工作目录）
+---@param picker snacks.Picker
+---@param relative? boolean
+---@return string[]
+function M.paths(picker, relative)
+  if not picker then
+    return {}
+  end
+  if vim.fn.mode():find("^[vV]") then
+    pcall(function()
+      picker.list:select() -- 可视选择转入 picker 选中集合
+    end)
+  end
+  local out = {}
+  local ok, items = pcall(function()
+    return picker:selected({ fallback = true })
+  end)
+  if ok and type(items) == "table" then
+    for _, item in ipairs(items) do
+      local path = require("snacks").picker.util.path(item)
+      if type(path) == "string" and path ~= "" then
+        if relative then
+          path = vim.fn.fnamemodify(path, ":.")
+        end
+        out[#out + 1] = path
+      end
+    end
+  end
+  pcall(function()
+    picker.list:set_selected()
+  end)
+  return out
+end
+
+--- 复制选中项路径：y=绝对路径 / Y=相对路径（相对 nvim 工作目录）
+--- 写入系统剪贴板 +（SSH 下自动走 OSC52）与未命名寄存器；多选时每行一个
+function M.yank(picker, relative)
+  local paths = M.paths(picker, relative)
+  if #paths == 0 then
+    vim.notify("没有可复制的路径", vim.log.levels.WARN, { title = "文件树" })
+    return
+  end
+  local value = table.concat(paths, "\n")
+  pcall(vim.fn.setreg, "+", value, "l")
+  pcall(vim.fn.setreg, '"', value, "l")
+  vim.notify(("已复制 %d 条%s路径"):format(#paths, relative and "相对" or "绝对"),
+    vim.log.levels.INFO, { title = "文件树" })
+end
+
 --- 确认键统一行为（<CR> / l / 双击）：
 --- 目录 → 总是展开/折叠（与预览模式无关）；文件 → 预览模式只预览，正常模式打开并清场
 function M.confirm(picker)
@@ -291,6 +340,12 @@ function M.open(opts)
           ["l"] = function()
             confirm()
           end,
+          ["y"] = { function()
+            M.yank(picker, false)
+          end, mode = { "n", "x" } },
+          ["Y"] = { function()
+            M.yank(picker, true)
+          end, mode = { "n", "x" } },
           ["<2-LeftMouse>"] = function()
             confirm()
           end,
