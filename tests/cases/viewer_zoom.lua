@@ -464,5 +464,22 @@ do
     ("ops=%s sent=%s"):format(vim.inspect(ops), tostring(img and img.sent)))
 end
 
+-- 回归：正常打开 JPG（异步转换 → 普通放置回退）也要自动出图，无需第二次操作
+do
+  local jpg = lib.dir() .. "/first_paint.jpg"
+  vim.system({ magick, "-size", "3000x2000", "xc:#37a", jpg }):wait(20000)
+  vim.cmd("edit " .. vim.fn.fnameescape(jpg))
+  local jb = vim.api.nvim_get_current_buf()
+  local okpaint = vim.wait(15000, function()
+    local s = viewer.state(jb)
+    return s ~= nil and s.view ~= nil and s.img ~= nil
+  end, 50)
+  local js = viewer.state(jb)
+  lib.ok("正常打开 JPG 自动出图（无需第二次操作）",
+    okpaint and js ~= nil and js.img ~= nil and js.view ~= nil,
+    ("paint=%s img=%s view=%s"):format(tostring(okpaint), tostring(js and js.img ~= nil),
+      tostring(js and js.view ~= nil)))
+end
+
 vim.cmd("silent! %bwipeout!")
 lib.finish()

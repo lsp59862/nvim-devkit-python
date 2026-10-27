@@ -406,8 +406,10 @@ local function place_impl(buf, st, file)
 
   for _, old in ipairs(olds) do
     if old ~= st.placement then
-      -- 旧画布释放数据；源图（st.img）保留，放大回源矩形模式无需重传
-      close_placement(old, old.img ~= st.img)
+      -- 只释放旧画布的数据；正在展示的图（新 placement 的图 / 保留的 st.img）绝不释放，
+      -- 否则首次预览/打开时会把自己刚建好的 placement 数据一起删掉（需按两次才出图的根因）
+      local keep = st.placement and st.placement.img
+      close_placement(old, old.img ~= keep and old.img ~= st.img)
     end
   end
 end
@@ -486,6 +488,9 @@ local function bounded_base(file, dims)
   local ok, ndims = pcall(require("snacks.image").util.dim, out)
   return out, (ok and ndims) or { width = tw, height = th }
 end
+
+-- 前置声明：ensure_image 的重试在 render 定义之前（之前误调用 nil 全局，重试从未生效）
+local render
 
 --- 确保 file 对应的图片对象存在（同步预发送；未就绪时延迟重试渲染）
 local function ensure_image(buf, st, file)
@@ -626,7 +631,7 @@ local function draw_rect(buf, st, base, view, W, H)
 end
 
 --- 渲染当前状态：等比缩放绘制到窗口画布
-local function render(buf, st)
+function render(buf, st)
   if not vim.api.nvim_buf_is_valid(buf) then
     return
   end
@@ -646,8 +651,18 @@ local function render(buf, st)
   if not okdim or not dims then
     st.src = base
     place(buf, st, base) -- 转换未完成（如 PDF 首页）：普通放置，完成后再补
+    -- 不依赖 placement 的更新事件：转换完成后主动重试渲染（有限次，成功即清零）
+    st.fallback = (st.fallback or 0) + 1
+    if st.fallback <= 100 then
+      vim.defer_fn(function()
+        if states[buf] == st and st.gen == gen then
+          pcall(render, buf, st)
+        end
+      end, 80)
+    end
     return
   end
+  st.fallback = 0
   base, dims = bounded_base(base, dims)
   st.src = base -- 记降采样后的实际传输路径
   st.src_dims = dims
@@ -1069,6 +1084,7 @@ function M.show(buf, src)
   st.page = 1
   st.pages = nil
   st.retry = 0
+  st.fallback = 0
   fetch_pages(buf, st)
   render(buf, st)
 end

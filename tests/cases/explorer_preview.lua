@@ -191,6 +191,13 @@ local real = explorer.open({ layout = { preset = "sidebar", preview = false } })
 vim.wait(500, function()
   return real ~= nil and real.opts ~= nil
 end, 20)
+-- 等异步 find 完成再关闭，避免 snacks finder 关闭后继续回调报错（会打断后续 vim.wait）
+vim.wait(3000, function()
+  local ok, items = pcall(function()
+    return real and real:items()
+  end)
+  return ok and type(items) == "table" and #items > 0
+end, 20)
 lib.ok("文件树 list 键 l 已接管道 confirm（函数）",
   real ~= nil and real.opts ~= nil and type(real.opts.win.list.keys["l"]) == "function",
   type(real ~= nil and real.opts and real.opts.win and real.opts.win.list.keys["l"]))
@@ -216,6 +223,42 @@ if real then
   end)
 end
 vim.wait(100)
+
+-- 回归：大图（JPG，异步转换 + >8MP 降采样）一次 <CR> 就要出图
+if vim.fn.executable("magick") == 1 then
+  local viewer = require("nvim-devkit.viewer")
+  local jpg = lib.dir() .. "/preview_big.jpg"
+  vim.system({ "magick", "-size", "4000x3000", "xc:#37a", jpg }):wait(20000)
+  local freed = {}
+  local orig_req9 = require("snacks.image").terminal.request
+  Snacks.image.terminal.request = function(opts)
+    if type(opts) == "table" and opts.a == "d" and opts.d == "I" then
+      freed[#freed + 1] = opts.i
+    end
+    return orig_req9(opts)
+  end
+  explorer.preview_item(nil, { file = jpg }) -- 只触发一次（等价一次 <CR>）
+  local okpaint = vim.wait(15000, function()
+    local s = explorer.buf and viewer.state(explorer.buf)
+    return s ~= nil and s.view ~= nil and s.img ~= nil
+  end, 50)
+  local s = explorer.buf and viewer.state(explorer.buf)
+  local img_id = s and s.img and s.img.id
+  local freed_self = false
+  for _, id in ipairs(freed) do
+    if id == img_id then
+      freed_self = true
+    end
+  end
+  Snacks.image.terminal.request = orig_req9
+  lib.ok("大图 JPG 一次 <CR> 即出图（转换回退后自动重试）",
+    okpaint and s ~= nil and s.view ~= nil,
+    ("paint=%s view=%s"):format(tostring(okpaint), tostring(s and s.view ~= nil)))
+  lib.ok("首次出图期间不释放当前图数据（无 d=I）", img_id ~= nil and not freed_self,
+    ("img=%s freed=%s"):format(tostring(img_id), vim.inspect(freed)))
+else
+  lib.ok("大图 JPG 首次出图（需要 ImageMagick，跳过）", true, "optional")
+end
 
 -- 路径复制：y=绝对 / Y=相对（相对 nvim 工作目录），多选每行一个
 do
