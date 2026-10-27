@@ -60,7 +60,7 @@ return {
         { "<leader>e", desc = "文件树", icon = { icon = "", hl = "WhichKeyIconAzure" } },
         { "<leader><space>", desc = "智能查找文件" },
         { "<leader>/", desc = "全项目搜索" },
-        { "<C-g>", desc = "恐慌重置" },
+        { "<C-g>", desc = "状态重置" },
         { "<Esc>", desc = "清除搜索高亮" },
         { "Q", desc = "已禁用(防误触)" },
       },
@@ -92,48 +92,15 @@ return {
       bigfile = { enabled = true },
       dashboard = {
         enabled = true,
+        -- 自绘：带边框的双栏卡片（左=会话/最近文件，右=快捷操作，底=启动耗时/提示）
+        -- 宽度按 dashboard 窗口实时计算，窗口缩放后自动重排
         sections = {
-          { section = "header" },
-          {
-            pane = 2,
-            section = "keys",
-            gap = 1,
-            padding = 1,
-          },
-          { section = "startup" },
-          -- 本目录有会话快照时提示可按 r 恢复（无快照则不渲染）
-          function()
-            if require("nvim-devkit.session").session_file() then
-              return {
-                align = "center",
-                text = {
-                  { "本目录有会话存档：按 ", hl = "footer" },
-                  { "r", hl = "special" },
-                  { " / <leader>qs 恢复", hl = "footer" },
-                },
-              }
-            end
+          function(self)
+            return require("nvim-devkit.dashboard").section(self)
           end,
         },
         preset = {
-          header = table.concat({
-            "                                     ",
-            "  nvim-devkit  ·  科研版 Neovim      ",
-            "  <C-g> 恐慌重置 · <leader>e 文件树   ",
-            "                                     ",
-          }, "\n"),
-          keys = {
-            { icon = "", key = "e", desc = "文件树", action = ":lua require('nvim-devkit.explorer').open()" },
-            { icon = "", key = "f", desc = "查找文件", action = ":lua Snacks.picker.smart()" },
-            { icon = "", key = "g", desc = "全项目搜索", action = ":lua Snacks.picker.grep()" },
-            { icon = "", key = "u", desc = "撤销树", action = ":UndotreeToggle" },
-            { icon = "", key = "r", desc = "恢复会话", action = ":lua require('persistence').load()" },
-            -- 覆盖 snacks 默认的 q→<cmd>bd（会绕过 winbuf 接管并销毁启动页）：q 与 :q 一致
-            { icon = "", key = "q", desc = "退出 / 关当前 tab（同 :q）", action = ":q" },
-            { icon = "", key = "?", desc = "快捷键大全", action = ":lua Snacks.picker.keymaps()" },
-            { icon = "", key = "c", desc = "速查卡（救命键位）", action = ":e " .. repo_path("docs/CHEATSHEET.md") },
-            { icon = "", key = "l", desc = "学习计划", action = ":e " .. repo_path("docs/LEARNING.md") },
-          },
+          keys = require("nvim-devkit.dashboard").keys,
         },
       },
       explorer = { enabled = true, replace_netrw = true },

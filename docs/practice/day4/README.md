@@ -10,7 +10,7 @@ cp -r ~/nvim-devkit/docs/practice/day4 /tmp/day4-drill
 cd /tmp/day4-drill && nvim-devkit
 ```
 
-迷路就 `Esc` 清高亮 / `Ctrl-g` 恐慌重置；改错了 `u` 撤销。
+迷路就 `Esc` 清高亮 / `Ctrl-g` 状态重置；改错了 `u` 撤销。
 （想在仓库里直接练也可以，练完执行 `git checkout -- docs/practice/day4` 复原。）
 
 ## 12 个练习（按顺序做）

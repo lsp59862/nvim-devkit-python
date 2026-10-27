@@ -48,7 +48,7 @@
 - **buffer** = 内存中的文件（`:ls` 查看：输入 `:ls` 自动用 `:Ls`，显示工作目录相对路径、同名文件保留区分目录如 `./v7.4/…/train.log` vs `./v7.5/…/train.log`，`:ls!` 含未列出缓冲区，通知底部有标志位图例；`<leader>,` 也可切换）；**window** = 分屏视口，永远显示某个 buffer；**tab** = 一组窗口的布局容器（不是"文件标签"）
 - 同一个文件可以被多个分屏同时显示；**关窗口不动文件；关文件会关掉显示它的窗口**（`:bd`）；`:q` 则两头都照顾——关文件但布局不动
 - **tab 工作区隔离**：每个 tab 的文件列表相互独立（`<Tab>`/`:bnext`/`<leader>,` 只作用于当前 tab；`<C-Tab>` / `<C-S-Tab>` 切换）；同一文件跨 tab 仍是同一个 buffer（undo/修改共享）
-- **启动页**：`r` 恢复会话 · `q` 与 `:q` 一致（退出；多 tab 时只关当前 tab）——会话只在退出时自动存，且当时还要有文件才存；有存档时启动页会提示，`NVIM_DEVKIT_AUTORESTORE=1` 可自动恢复
+- **启动页**：带边框的双栏卡片（左：会话提示 + 最近文件；右：快捷操作；底栏：启动耗时 + 提示）；窗口/终端缩放会自动重排 · `<数字>` 打开最近文件 · `r` 恢复会话 · `q` 与 `:q` 一致（退出；多 tab 时只关当前 tab）——会话只在退出时自动存，且当时还要有文件才存；有存档时启动页会提示（恢复文件/窗口布局/光标），`NVIM_DEVKIT_AUTORESTORE=1` 可自动恢复
 - **补全菜单**（blink.cmp）：打字自动弹；Enter 接受 · Tab / S-Tab 下一项/上一项 · Esc 或 C-e 取消预览（↑/↓ 浏览会把候选写进正文，Esc/C-e 可撤销；C-y 也能接受）
 - **词级删除**（VS Code 式）：插入模式 `<C-w>` / `<C-BS>` 删前一个词（部分终端把 Ctrl+Backspace 发成 `^H`，已自动兜底）、`<C-Del>` 删后一个词、`<C-u>` 删到行首
 - **官方教程**：`:Tutor`（按系统语言自动；中文系统即中文版，30 分钟入门）
@@ -88,7 +88,7 @@
 
 | 键 | 作用 | 键 | 作用 |
 | --- | --- | --- | --- |
-| `Ctrl-g` | **恐慌重置** | `Esc` | 取消一切 + 清高亮 |
+| `Ctrl-g` | **状态重置** | `Esc` | 取消一切 + 清高亮 |
 | `u` / `Ctrl-r` | 撤销 / 重做 | `<C-s>` | 保存 |
 | `s` / `S` | Flash 跳转 / 选节点 | `gd` `gr` `K` | 定义 / 引用 / 文档 |
 | `n` / `N` | 下/上个匹配（居中） | `[d` `]d` | 上/下个诊断 |
@@ -245,7 +245,7 @@ return config
 | 自动命令 | `config/lua/config/autocmds.lua` |
 | 插件（增删改） | `config/lua/plugins/*.lua`（按功能拆分） |
 | 主题 | 默认 `nvkit-terminal`（Campbell 色板、`#0c0c0c` 实色灰底）：`config/colors/nvkit-terminal.vim` + `config/lua/nvim-devkit/colors/terminal.lua`；切其他主题 `:colorscheme tokyonight` / `catppuccin-mocha` / `kanagawa-wave`，切回 `:colorscheme nvkit-terminal`；状态栏最右显示时间（HH:MM）；换 WezTerm 色板 `:lua vim.g.nvkit_terminal_palette="wezterm"`；透明背景 `:lua vim.g.nvkit_terminal_transparent=true`（都要再 `:colorscheme nvkit-terminal`） |
-| 恐慌恢复/PDF 等自研模块 | `config/lua/nvim-devkit/*.lua` |
+| 状态恢复/PDF 等自研模块 | `config/lua/nvim-devkit/*.lua` |
 
 加插件模板：
 

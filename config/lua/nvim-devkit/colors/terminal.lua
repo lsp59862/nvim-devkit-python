@@ -351,6 +351,16 @@ function M.load()
     WhichKeyIconPurple = { fg = p.magenta },
     WhichKeyIconRed = { fg = p.red },
     WhichKeyIconYellow = { fg = p.bright_yellow },
+    -- 启动页（dashboard）自绘卡片
+    SnacksDashboardNormal = { fg = p.fg },
+    SnacksDashboardBorder = { fg = p.gray },
+    SnacksDashboardKey = { fg = p.bright_yellow, bold = true },
+    SnacksDashboardIcon = { fg = p.cyan },
+    SnacksDashboardDesc = { fg = p.fg },
+    SnacksDashboardFile = { fg = p.silver },
+    SnacksDashboardFooter = { fg = p.gray },
+    SnacksDashboardSpecial = { fg = p.bright_cyan },
+    SnacksDashboardSession = { fg = p.bright_green },
     BlinkCmpDocBorder = { fg = p.gray },
     BlinkCmpSignatureHelpBorder = { fg = p.gray },
   }

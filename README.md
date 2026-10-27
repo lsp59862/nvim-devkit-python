@@ -114,7 +114,7 @@ cd ~/nvim-devkit && ./install.sh --update
 | AI | opencode.nvim（`<leader>oa` 提问并注入当前上下文，编辑 diff 审阅） |
 | 终端 | VS Code 式面板：浮动（`<leader>tp`）/ 底部（`<leader>tb`）/ 列表（`<leader>tl`）；侧边栏（圆角包边、当前高亮）显示名字、鼠标点击切换；终端内 `Alt+N` 新建同类、`Alt+J`/`Alt+K` 循环、`Alt+R` 重命名、`Ctrl+Shift+=` 最大化/还原（WezTerm 需先释放默认键，见速查卡）；浮动面板从中心“点→线→分裂”展开、镜像折叠（时长可调） |
 | 会话 | persistence（退出时自动存现场；`<leader>qs`/`ql` 恢复，`qd`/`qe` 开关） |
-| 恢复 | 持久化撤销 + undotree + `:earlier 10m` + `Ctrl-g` 恐慌重置 |
+| 恢复 | 持久化撤销 + undotree + `:earlier 10m` + `Ctrl-g` 状态重置 |
 | 窗口/文件语义 | 统一可预测的 `:q` / `:bd` / `<leader>wd` / `:exit` 行为（见下文「文件 / 窗口 / 标签页语义」） |
 
 ## 文件 / 窗口 / 标签页语义
@@ -204,7 +204,7 @@ nvim-devkit/
 │   ├── lazy-lock.json          # 插件版本锁（请提交到 git）
 │   └── lua/
 │       ├── config/             # options / keymaps / autocmds / lazy
-│       ├── nvim-devkit/        # recover(恐慌恢复) / pdf / parsers / caps
+│       ├── nvim-devkit/        # recover(状态恢复) / pdf / parsers / caps
 │       └── plugins/            # 按主题拆分的插件配置
 ├── scripts/                    # checkhealth / health.lua / pdf_extract.py
 └── docs/                       # CHEATSHEET（速查卡）/ LEARNING（学习计划+恢复手册）
@@ -215,7 +215,7 @@ nvim-devkit/
 Vim 的"模式 + 前缀键 + 寄存器"让误按后果难以预期。本配置的对策：
 
 1. **一切可撤销**：`undofile` 持久化撤销历史；`u` / `Ctrl-r`；`:earlier 10m` 按时间回退；`<leader>uu` 打开撤销树看全部历史。
-2. **一条命令回到已知状态**：`Ctrl-g` = 恐慌重置（回正常模式、停宏录制、关所有浮窗、清搜索高亮）。
+2. **一条命令回到已知状态**：`Ctrl-g` = 状态重置（回正常模式、停宏录制、关所有浮窗、清搜索高亮）。
 3. **可预测的取消语义**：`Esc` 取消一切待定操作并清高亮；插件浮窗一律 `Esc` 关闭。
 4. **状态可见**：which-key 200ms 显示所有可能路径；状态栏显示模式与宏录制状态；noice 显示命令回显。
 5. **防误触**：`Q`（Ex 模式）禁用；关闭自动执行项目内配置（`exrc=false`）。
@@ -289,7 +289,7 @@ Vim 的"模式 + 前缀键 + 寄存器"让误按后果难以预期。本配置�
 ## 行为测试
 
 ```bash
-./tests/run.sh           # 行为测试：41 个用例 / 312 项断言，必须全部通过
+./tests/run.sh           # 行为测试：41 个用例 / 319 项断言，必须全部通过
 scripts/checkhealth.sh   # 健康检查：硬错误必须为 0
 ```
 

@@ -1,4 +1,4 @@
--- 恐慌恢复：误按一串键之后，一键回到已知状态
+-- 状态恢复：误按一串键之后，一键回到已知状态
 local M = {}
 
 local function close_cmdwin()

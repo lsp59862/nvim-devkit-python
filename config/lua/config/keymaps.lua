@@ -2,8 +2,8 @@ local map = vim.keymap.set
 local recover = require("nvim-devkit.recover")
 
 -- ── 恢复 / 防误触 ─────────────────────────────────────
-map("n", "<C-g>", recover.panic, { desc = "恐慌重置：正常模式+关浮窗+停宏+清高亮" })
-map("x", "<C-g>", recover.panic, { desc = "恐慌重置" })
+map("n", "<C-g>", recover.panic, { desc = "状态重置：正常模式+关浮窗+停宏+清高亮" })
+map("x", "<C-g>", recover.panic, { desc = "状态重置" })
 map("i", "<C-g>", "<Esc>", { desc = "退出插入模式" })
 map("c", "<C-g>", "<Esc>", { desc = "退出命令行" })
 map("t", "<C-g>", [[<C-\><C-n>]], { desc = "退出终端模式" })
