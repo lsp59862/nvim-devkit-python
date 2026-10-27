@@ -180,6 +180,7 @@
 | 更新后坏了 | `git -C ~/nvim-devkit log --oneline -5` → `git checkout <旧提交> -- config/` → 重跑 `install.sh --update` |
 | 分屏分不清 / 压暗不够 | 增强已默认开启：`:NvkitSplits` 开关；调强度 `:lua local t=require("nvim-devkit.theme"); t.options.fg_fade=0.7; t.options.bg_fade=0.5; t.dim_inactive(false); t.dim_inactive(true)`（数值 0~1，越大越明显） |
 | WezTerm 按 `Ctrl+Shift+=` 变放大页面 | WezTerm 默认占用该键调字号，按键到不了 nvim；按下方说明释放默认键（或转发 `F13`） |
+| 上下分屏 / 窗口很扁时大图不显示 | WezTerm 对单张图片有 100MB（2500 万像素）硬上限，超过会**整张丢弃**；窗口越扁，"适应窗口"的补边画布越宽（可能到 3000 万像素）。查看器已自动检测：补边画布超过 `vim.g.nvkit_viewer_pad_max_pixels`（默认 16MP）时改用窗口尺寸画布（首次绘制多一次 ~0.1s 烘焙，之后缩放/平移照常） |
 | WezTerm 图片内存高 / 日志 `using ... RAM for images, pruned ...` | WezTerm 的 kitty 图片缓存预算硬编码 320MiB，超了才回收（日志就是回收动作）。查看器现在：① 关闭图片/切图/擦除 buffer 时发 `d=I` 主动释放终端位图数据（切窗口/浮窗只是暂时隐藏，保留数据秒恢复）；② 超大图传输前按 `vim.g.nvkit_viewer_max_pixels`（默认 8MP ≈ 32MB RGBA，设 0 关闭）先降采样。若仍偏高，升级 WezTerm 或调小该值 |
 | 长按平移/缩放略有卡顿 | 查看器侧每步仅 ~0.05ms（实测，零重传）；主要成本是终端重绘整窗图片——可调大 `vim.g.nvkit_viewer_throttle_ms`（如 100）进一步降频；建议升级 WezTerm 到新版本（其 kitty 图片渲染路径近年有大量修复） |
 | 图片盖住命令行/消息/通知 | 终端把图片画在文字上层，全窗画布会盖住 noice 的命令行/消息浮窗；查看器已自动避让：打开 `:`、出现消息/通知/picker/终端面板等浮窗时**暂时隐藏图片**，界面清空后自动恢复（约 1 秒） |

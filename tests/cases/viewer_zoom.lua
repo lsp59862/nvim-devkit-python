@@ -464,6 +464,40 @@ do
     ("ops=%s sent=%s"):format(vim.inspect(ops), tostring(img and img.sent)))
 end
 
+-- 扁窗口（上下分屏）：补边画布超过终端单图上限时自动改用窗口尺寸画布
+do
+  vim.cmd("silent! only")
+  local big = lib.dir() .. "/split_big.png"
+  vim.system({ magick, "-size", "4000x3000", "xc:#37a", big }):wait(20000)
+  vim.cmd("split") -- 上下分屏，并把当前（下）窗口压扁
+  vim.api.nvim_win_set_height(0, 10)
+  vim.cmd("edit " .. vim.fn.fnameescape(big))
+  local sb = vim.api.nvim_get_current_buf()
+  local okpaint = vim.wait(15000, function()
+    local s = viewer.state(sb)
+    return s ~= nil and s.view ~= nil and s.view.mode == "canvas"
+      and s.canvas_file ~= nil and s.placement ~= nil and not s.placement.closed
+      and s.placement:ready()
+  end, 50)
+  local s = viewer.state(sb)
+  lib.ok("扁窗口大图自动改用窗口尺寸画布（避开终端单图上限）",
+    okpaint and s ~= nil and s.view ~= nil and s.view.mode == "canvas",
+    ("paint=%s mode=%s"):format(tostring(okpaint), tostring(s and s.view and s.view.mode)))
+  local cw, chh
+  if s and s.view and s.view.plan then
+    cw, chh = s.view.plan.canvas.w, s.view.plan.canvas.h
+  end
+  lib.ok("回退画布为窗口像素尺寸（远小于 2500 万像素上限）",
+    cw ~= nil and chh ~= nil and cw * chh <= 25 * 1000 * 1000,
+    ("canvas=%sx%s"):format(tostring(cw), tostring(chh)))
+  local placed = s ~= nil and s.placement ~= nil and not s.placement.closed
+    and s.placement.img ~= nil and s.placement.img.sent == true
+  lib.ok("扁窗口下图片已放置显示", placed,
+    ("placement=%s sent=%s"):format(tostring(s ~= nil and s.placement ~= nil),
+      tostring(s ~= nil and s.placement and s.placement.img and s.placement.img.sent)))
+  vim.cmd("silent! only")
+end
+
 -- 回归：正常打开 JPG（异步转换 → 普通放置回退）也要自动出图，无需第二次操作
 do
   local jpg = lib.dir() .. "/first_paint.jpg"

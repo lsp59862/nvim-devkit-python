@@ -489,6 +489,17 @@ local function bounded_base(file, dims)
   return out, (ok and ndims) or { width = tw, height = th }
 end
 
+-- 补边画布像素上限：WezTerm 单图限制 100MB RGBA（= 2500 万像素），超过会整张丢弃；
+-- 窗口很扁/很窄时补边画布会被撑得极大，因此超过阈值时改用"窗口像素尺寸"画布。
+-- 可用 vim.g.nvkit_viewer_pad_max_pixels 调整（默认 16MP ≈ 64MB RGBA）。
+local function pad_limit()
+  local v = tonumber(vim.g.nvkit_viewer_pad_max_pixels)
+  if v == nil then
+    return 16 * 1024 * 1024
+  end
+  return math.max(0, math.min(v, 24 * 1024 * 1024))
+end
+
 -- 前置声明：ensure_image 的重试在 render 定义之前（之前误调用 nil 全局，重试从未生效）
 local render
 
@@ -690,7 +701,28 @@ function render(buf, st)
   st.view = view
   st.px, st.py = view.px, view.py
   if view.mode == "rect" then
-    return draw_rect(buf, st, base, view, W, H)
+    if view.pad.w * view.pad.h <= pad_limit() then
+      return draw_rect(buf, st, base, view, W, H)
+    end
+    -- 窗口过扁/过窄：补边画布超过终端单图上限（WezTerm 会静默丢弃整张图）
+    -- → 改用窗口像素尺寸画布（约 0.2~2MP，安全且烘焙快）
+    local pw2, ph2 = math.floor(W * cw) + 1, math.floor(H * ch) + 1
+    local cplan = M._plan(dims.width, dims.height, pw2, ph2, st.zoom, st.px, st.py)
+    st.view = {
+      mode = "canvas",
+      plan = cplan,
+      px = cplan.px,
+      py = cplan.py,
+      px_lo = cplan.px_lo,
+      px_hi = cplan.px_hi,
+      py_lo = cplan.py_lo,
+      py_hi = cplan.py_hi,
+      disp = cplan.disp,
+      canvas = cplan.canvas,
+      s0 = cplan.s0,
+      s = cplan.s,
+    }
+    st.px, st.py = cplan.px, cplan.py
   end
 
   -- 画布模式沿用"多 1px 走整数格"的技巧
