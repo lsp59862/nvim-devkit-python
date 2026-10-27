@@ -119,6 +119,14 @@ lib.ok("少量最近文件：全部列出且无溢出行",
     and vim.fn.maparg("4", "n", false, true).callback == nil, "")
 
 -- 窗口缩放：布局应重排（宽度变化、边框仍完整）
+local function top_row()
+  for i, l in ipairs(lines()) do
+    if l:find("╭", 1, true) then
+      return i
+    end
+  end
+end
+
 local function top_width()
   for _, l in ipairs(lines()) do
     if l:find("╭", 1, true) then
@@ -138,6 +146,47 @@ local w_after = top_width()
 lib.ok("窗口缩放后布局重排（宽度变化且仍有边框）",
   w_before ~= nil and w_after ~= nil and w_after ~= w_before,
   ("before=%s after=%s"):format(tostring(w_before), tostring(w_after)))
+vim.cmd("silent! only")
+lib.reset()
+
+-- 高度变化（:sp / 底部终端）也要重新纵向居中
+lib.reset()
+require("snacks").dashboard.open({ win = 0 })
+vim.wait(300)
+local r_before = top_row()
+local w_before_h = top_width()
+vim.cmd("split") -- 横向分割：当前窗口高度减半
+vim.wait(300)
+vim.api.nvim_exec_autocmds("WinResized", {})
+vim.wait(800)
+local r_after = top_row()
+local w_after_h = top_width()
+lib.ok("窗口高度变化后纵向重新居中（:sp）",
+  r_before ~= nil and r_after ~= nil and r_after < r_before,
+  ("row_before=%s row_after=%s"):format(tostring(r_before), tostring(r_after)))
+lib.ok("高度变化不影响卡片宽度（仍完整）",
+  w_before_h ~= nil and w_after_h ~= nil and w_after_h == w_before_h,
+  ("w_before=%s w_after=%s"):format(tostring(w_before_h), tostring(w_after_h)))
+vim.cmd("silent! only")
+lib.reset()
+
+-- 重排后视图回到顶部（居中依赖顶部空白行；snacks 不重置视图）
+lib.reset()
+require("snacks").dashboard.open({ win = 0 })
+vim.wait(400)
+local dwin = vim.api.nvim_get_current_win()
+vim.api.nvim_win_call(dwin, function()
+  vim.fn.winrestview({ topline = 5 })
+end)
+vim.cmd("vsplit") -- 任意尺寸变化，触发重排
+vim.wait(300)
+vim.api.nvim_exec_autocmds("WinResized", {})
+vim.wait(800)
+local cur_win = vim.api.nvim_get_current_win()
+local topline = vim.api.nvim_win_call(cur_win, function()
+  return vim.fn.winsaveview().topline
+end)
+lib.ok("重排后视图回到顶部（卡片保持居中）", topline == 1, "topline=" .. tostring(topline))
 vim.cmd("silent! only")
 lib.reset()
 

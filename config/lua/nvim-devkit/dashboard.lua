@@ -139,10 +139,67 @@ local function startup_text()
   return ("⚡ %sms · %d/%d 插件"):format(ms, stats.loaded, stats.count)
 end
 
+--- 独立的 dashboard 重排监听：
+--- snacks 自带的 resize 钩子依赖实例记录的窗口，窗口被分割/复制（:sp、底部终端）时
+--- 可能漏掉高度变化；这里按"当前实际显示 dashboard 的窗口"兜底重绘。
+function M.watch()
+  if M.watching then
+    return
+  end
+  M.watching = true
+  local function check()
+    local inst = M.inst
+    if not (inst and inst.buf and vim.api.nvim_buf_is_valid(inst.buf)) then
+      M.inst = nil
+      return
+    end
+    -- 目标窗口：当前窗口优先，否则第一个显示 dashboard 的窗口
+    local cur = vim.api.nvim_get_current_win()
+    local win
+    if vim.api.nvim_win_is_valid(cur) and vim.api.nvim_win_get_buf(cur) == inst.buf then
+      win = cur
+    else
+      local w = vim.fn.bufwinid(inst.buf)
+      if w ~= -1 then
+        win = w
+      elseif vim.api.nvim_win_is_valid(inst.win or -1) then
+        win = inst.win
+      end
+    end
+    if not win then
+      return
+    end
+    local width = vim.api.nvim_win_get_width(win)
+    local height = vim.api.nvim_win_get_height(win)
+    local last = M.last
+    if last and last.win == win and last.width == width and last.height == height then
+      return
+    end
+    inst.win = win
+    M.last = { win = win, width = width, height = height }
+    pcall(function()
+      inst:update()
+    end)
+  end
+  vim.api.nvim_create_autocmd(
+    { "WinResized", "VimResized", "WinNew", "WinClosed", "WinEnter", "TabEnter" },
+    {
+      group = vim.api.nvim_create_augroup("nvkit_dashboard_resize", { clear = true }),
+      callback = function()
+        vim.schedule(function()
+          pcall(check)
+        end)
+      end,
+    }
+  )
+end
+
 --- 生成整个 dashboard 的 items（两个等宽 pane，边框在中缝拼接）
 ---@param self any snacks dashboard 实例
 ---@return table[]
 function M.section(self)
+  M.inst = self
+  M.watch()
   local win = self.win
   local win_w, win_h = 60, 24
   if win and vim.api.nvim_win_is_valid(win) then
@@ -154,6 +211,17 @@ function M.section(self)
   W = math.max(18, math.min(42, W))
   self.opts.width = W
   self.opts.pane_gap = 0
+
+  -- 垂直居中靠 buffer 顶部的空白行实现；snacks 重写 buffer 不会重置视图，
+  -- 配合 scrolloff/光标定位可能停在滚动位置（看起来不居中）。
+  -- 每次重排后把视图复位到第 1 行（在所有更新完成之后执行）。
+  vim.schedule(function()
+    if win and vim.api.nvim_win_is_valid(win) and vim.api.nvim_win_get_buf(win) == self.buf then
+      pcall(vim.api.nvim_win_call, win, function()
+        vim.fn.winrestview({ topline = 1, leftcol = 0 })
+      end)
+    end
+  end)
 
   local L = W - 2 -- 左栏内容宽度（左竖线 + 内容 + 中缝竖线）
   local R = W - 1 -- 右栏内容宽度（内容 + 右竖线）
