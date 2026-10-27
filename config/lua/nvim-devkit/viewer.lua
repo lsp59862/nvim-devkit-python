@@ -796,7 +796,8 @@ function render(buf, st)
   end
   -- 幂等：当前 placement 已在展示同一画布时不再重建（避免无意义 a=p）
   if
-    st.canvas_file == out
+    not st.image_hidden
+    and st.canvas_file == out
     and st.placement
     and not st.placement.closed
     and st.placement.img
@@ -896,22 +897,30 @@ local function hide_image(st)
     return
   end
   st.draw_token = (st.draw_token or 0) + 1 -- 作废挂起的节流绘制（浮窗期间不重画图片）
-  if st.img and st.pid then
-    -- 源矩形模式：删除查看器自己的 placement（数据保留，恢复时直接重放）
-    st.image_hidden = true
-    local ok, terminal = pcall(require, "snacks.image.terminal")
-    if ok then
-      pcall(terminal.request, { a = "d", d = "i", i = st.img.id, p = st.pid })
-    end
-    return
+  local ok, snacks = pcall(require, "snacks.image")
+  local terminal = ok and snacks and snacks.terminal
+  -- 源矩形模式的 raw placement（注意：rect→canvas 切换后 st.img/st.pid 会保留，
+  -- 这里必须继续处理画布 placement，不能提前 return）
+  if st.img and st.pid and ok then
+    pcall(terminal.request, { a = "d", d = "i", i = st.img.id, p = st.pid })
   end
+  for id in pairs(st.placed or {}) do
+    if st.pid and ok then
+      pcall(terminal.request, { a = "d", d = "i", i = id, p = st.pid })
+    end
+  end
+  -- 画布/降级模式的 snacks placement：用正确 placement id 删除
+  -- （snacks 的 Image:del 把 ipairs 下标当 placement id，永远发 p=1）
   local p = st.placement
   if p and not p.closed then
-    st.image_hidden = true
+    if ok and p.img then
+      pcall(terminal.request, { a = "d", d = "i", i = p.img.id, p = p.id })
+    end
     pcall(function()
       p:del()
     end)
   end
+  st.image_hidden = true
 end
 
 --- 合并重定位：窗口事件落定后对当前画布重新放置一次（仅一次 a=p）。
@@ -938,6 +947,16 @@ local function schedule_replace(buf, st, delay)
           attempt(tries + 1)
         end, RETRY_MS)
       end
+      return
+    end
+    -- 当前实际显示是画布（可能同时保留源图 st.img，rect→canvas 混合状态）：
+    -- 优先重放画布 placement，不重建、不重传
+    if st.placement and not st.placement.closed and st.view and st.view.mode == "canvas" then
+      st.image_hidden = false
+      st.placement._state = nil
+      pcall(function()
+        st.placement:update()
+      end)
       return
     end
     if st.img then

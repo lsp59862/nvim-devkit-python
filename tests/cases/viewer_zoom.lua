@@ -439,6 +439,55 @@ do
     vim.inspect(st.src_dims))
 end
 
+-- 切 buffer：rect→canvas 混合状态也要删掉画布 placement（否则切换后旧图残留）
+do
+  reset()
+  vim.wait(300)
+  minus() -- 进入画布模式（rect→canvas 切换保留 st.img，即混合状态）
+  vim.wait(1000)
+  local s = st
+  lib.ok("切 buffer 前处于画布模式且保留源图（混合状态）",
+    s.view ~= nil and s.view.mode == "canvas" and s.img ~= nil
+      and s.placement ~= nil and not s.placement.closed,
+    vim.inspect(s.view and { mode = s.view.mode, img = s.img ~= nil, plac = s.placement ~= nil }))
+  local canvas_img = s.placement and s.placement.img and s.placement.img.id
+  local canvas_pid = s.placement and s.placement.id
+  local dels = {}
+  local orig_req_sw = require("snacks.image").terminal.request
+  Snacks.image.terminal.request = function(opts)
+    if type(opts) == "table" and opts.a == "d" then
+      dels[#dels + 1] = { i = opts.i, p = opts.p }
+    end
+    return orig_req_sw(opts)
+  end
+  local tb = vim.api.nvim_create_buf(true, false)
+  vim.api.nvim_buf_set_name(tb, lib.dir() .. "/switch_target.lua")
+  vim.api.nvim_win_set_buf(0, tb) -- 等价 <Tab>/:bnext 切走
+  vim.wait(600)
+  Snacks.image.terminal.request = orig_req_sw
+  local okdel = false
+  for _, d in ipairs(dels) do
+    if d.i == canvas_img and d.p == canvas_pid then
+      okdel = true
+    end
+  end
+  lib.ok("切 buffer 时删除画布 placement（正确 id，混合状态不残留）",
+    s.image_hidden == true and okdel,
+    ("hidden=%s dels=%s"):format(tostring(s.image_hidden), vim.inspect(dels)))
+  -- 切回图片：自动恢复
+  vim.api.nvim_win_set_buf(0, buf)
+  local restored = vim.wait(3000, function()
+    local x = viewer.state(buf)
+    return x ~= nil and x.image_hidden == false
+      and (x.img ~= nil or (x.placement ~= nil and not x.placement.closed))
+  end, 50)
+  lib.ok("切回图片 buffer 后自动恢复显示", restored,
+    vim.inspect(viewer.state(buf) and { hidden = viewer.state(buf).image_hidden }))
+  pcall(vim.api.nvim_buf_delete, tb, { force = true })
+  reset()
+  vim.wait(300)
+end
+
 -- 关闭查看器：释放终端位图数据（大写 d=I），内存不再等 WezTerm 预算回收
 do
   local img = st.img
