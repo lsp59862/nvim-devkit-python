@@ -123,6 +123,7 @@ run_case viewer_zoom 0
 run_case pathfmt 0
 run_case ls 0
 run_case theme 0
+run_case viewer_floats 0
 run_case explorer_preview 0
 run_case winbuf_exit_dashboard 1
 run_case winbuf_exit_command 1

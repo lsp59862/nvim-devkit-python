@@ -252,17 +252,67 @@ local function source_file(st)
   return src
 end
 
---- 显示该 buffer 的窗口格数（多窗取最小；未显示时给合理估计）
-local function view_dims(buf)
-  local W, H = vim.o.columns, vim.o.lines
+--- 目标窗口：优先当前窗口（如果它显示该 buffer），否则取显示该 buffer 的第一个窗口
+local function target_win(buf)
   local wins = vim.fn.win_findbuf(buf)
   if #wins == 0 then
+    return nil
+  end
+  local cur = vim.api.nvim_get_current_win()
+  if vim.api.nvim_win_get_buf(cur) == buf then
+    return cur
+  end
+  return wins[1]
+end
+
+--- 窗口的屏幕矩形（0 基，行/列范围都取半开区间）
+local function win_rect(win)
+  if not (win and vim.api.nvim_win_is_valid(win)) then
+    return nil
+  end
+  local ok, pos = pcall(vim.api.nvim_win_get_position, win)
+  if not ok then
+    return nil
+  end
+  local w = vim.api.nvim_win_get_width(win)
+  local h = vim.api.nvim_win_get_height(win)
+  return { r0 = pos[1], c0 = pos[2], r1 = pos[1] + h, c1 = pos[2] + w }
+end
+
+local function rects_overlap(a, b)
+  if not (a and b) then
+    return false
+  end
+  return a.r0 < b.r1 and b.r0 < a.r1 and a.c0 < b.c1 and b.c0 < a.c1
+end
+
+--- 是否有浮窗真正遮挡目标窗口。
+--- 注意：文件树 sidebar 是"左侧 split"，其内部的 input/list 浮窗（relative="win"）
+--- 只占左侧 40 列，不与右侧图片窗口相交 → 不应导致图片隐藏。
+local function float_overlaps(win)
+  local target = win_rect(win)
+  if not target then
+    return false
+  end
+  for _, w in ipairs(vim.api.nvim_list_wins()) do
+    if w ~= win and vim.api.nvim_win_get_config(w).relative ~= "" then
+      if rects_overlap(target, win_rect(w)) then
+        return true
+      end
+    end
+  end
+  return false
+end
+
+--- 显示该 buffer 的窗口格数（目标窗口优先；未显示时给合理估计）
+local function view_dims(buf)
+  local W, H = vim.o.columns, vim.o.lines
+  local win = target_win(buf)
+  if not win then
     return W, math.max(1, H - 2)
   end
-  for _, win in ipairs(wins) do
-    W = math.min(W, vim.api.nvim_win_get_width(win))
-    H = math.min(H, vim.api.nvim_win_get_height(win))
-  end
+  W = math.min(W, vim.api.nvim_win_get_width(win))
+  H = math.min(H, vim.api.nvim_win_get_height(win))
   return W, H
 end
 
@@ -428,15 +478,15 @@ end
 
 --- 把光标放到窗口左上角（与 snacks render_fallback 相同规则；0 号是"从 editor 顶部起算"的偏移）
 local function position_cursor(buf)
-  local wins = vim.fn.win_findbuf(buf)
-  if #wins == 0 then
+  local win = target_win(buf)
+  if not win then
     return
   end
   local ok, terminal = pcall(require, "snacks.image.terminal")
   if not ok then
     return
   end
-  local pos = vim.api.nvim_win_get_position(wins[1])
+  local pos = vim.api.nvim_win_get_position(win)
   local Snacks = require("snacks")
   if
     (Snacks.config.styles.snacks_image.relative ~= "editor")
@@ -839,17 +889,6 @@ local function draw_soon(buf, st)
   end, gap)
 end
 
---- 当前是否有 UI 浮窗（noice 的命令行/消息、通知、picker、终端面板等）
---- 终端把图片画在文字上层，全窗画布会盖住这些浮窗 → 有浮窗时需暂时隐藏图片
-local function ui_floats_visible()
-  for _, win in ipairs(vim.api.nvim_list_wins()) do
-    if vim.api.nvim_win_get_config(win).relative ~= "" then
-      return true
-    end
-  end
-  return false
-end
-
 --- 暂时隐藏图片：真正发删除清空单元格附件（fallback 路径下 snacks 的 hide() 不生效）
 --- 幂等：浮窗事件风暴时不重复发 a=d
 local function hide_image(st)
@@ -892,8 +931,8 @@ local function schedule_replace(buf, st, delay)
     if not (p and not p.closed and p:ready()) and not st.img then
       return
     end
-    -- 预览 buffer（文件树预览模式）与文件树浮窗并存是预期状态，不做浮窗避让
-    if not vim.b[buf].nvkit_preview and ui_floats_visible() then
+    -- 仅当浮窗真正遮挡目标窗口时才避让（文件树侧边栏的输入/列表浮窗不遮挡图片窗口）
+    if not vim.b[buf].nvkit_preview and float_overlaps(target_win(buf)) then
       if tries < RETRY_MAX then
         vim.defer_fn(function()
           attempt(tries + 1)
@@ -926,7 +965,7 @@ local function sync_visibility(buf, st)
   if vim.b[buf].nvkit_preview then
     -- 预览 buffer：文件树浮窗是预期状态；界面变化时直接重放（不做浮窗避让）
     schedule_replace(buf, st)
-  elseif ui_floats_visible() then
+  elseif float_overlaps(target_win(buf)) then
     cancel_replace(st)
     hide_image(st)
   else
@@ -1055,17 +1094,50 @@ local function setup()
       end
     end
   end)
+  local aug = vim.api.nvim_create_augroup("nvim_devkit_viewer", { clear = true })
   vim.api.nvim_create_autocmd("VimResized", {
-    group = vim.api.nvim_create_augroup("nvim_devkit_viewer", { clear = true }),
+    group = aug,
     callback = function()
       for buf, st in pairs(states) do
-        if vim.api.nvim_buf_is_valid(buf) and st.placement and not st.placement.closed then
+        if vim.api.nvim_buf_is_valid(buf) and (st.img or (st.placement and not st.placement.closed)) then
           vim.schedule(function()
             if states[buf] == st then
               render(buf, st)
             end
           end)
         end
+      end
+    end,
+  })
+  -- 全局恢复检查：浮窗关闭/窗口变化后，把仍然显示中且不再被遮挡的"隐藏"图片找回
+  vim.api.nvim_create_autocmd({ "WinClosed", "WinNew", "WinResized" }, {
+    group = aug,
+    callback = function()
+      vim.schedule(function()
+        for buf, st in pairs(states) do
+          if vim.api.nvim_buf_is_valid(buf) and st.image_hidden then
+            local win = target_win(buf)
+            local blocked = not vim.b[buf].nvkit_preview and float_overlaps(win)
+            if win and not blocked then
+              schedule_replace(buf, st, 50)
+            end
+          end
+        end
+      end)
+    end,
+  })
+  -- 全局显示钩子：任何 ft=image buffer 被显示时，确保查看器已初始化并渲染一次
+  -- （覆盖 :b / <Tab> / 会话恢复等"FileType 早已触发过"的路径）
+  vim.api.nvim_create_autocmd({ "BufWinEnter", "BufEnter" }, {
+    group = aug,
+    callback = function(ev)
+      if vim.api.nvim_buf_is_valid(ev.buf) and vim.bo[ev.buf].filetype == "image"
+        and not vim.b[ev.buf].nvkit_viewer_keys then
+        vim.schedule(function()
+          if vim.api.nvim_buf_is_valid(ev.buf) then
+            pcall(M.attach, ev.buf)
+          end
+        end)
       end
     end,
   })
@@ -1258,12 +1330,7 @@ function M.attach(buf)
         end,
       })
     end)
-  end
-  -- 源文件不存在时不渲染（转换必然失败，只会在后台刷错误）
-  local name = vim.api.nvim_buf_get_name(buf)
-  if name ~= "" and vim.fn.filereadable(name) == 1 then
-    pcall(render, buf, state(buf))
-    -- 安全网：snacks 自带的源图挂载可能晚于我们（异步终端探测），稍后清扫几次
+    -- 安全网（仅首次）：snacks 自带的源图挂载可能晚于我们（异步终端探测），稍后清扫几次
     for _, delay in ipairs({ 400, 1500, 3000 }) do
       vim.defer_fn(function()
         if vim.api.nvim_buf_is_valid(buf) then
@@ -1271,6 +1338,11 @@ function M.attach(buf)
         end
       end, delay)
     end
+  end
+  -- 源文件不存在时不渲染（转换必然失败，只会在后台刷错误）
+  local name = vim.api.nvim_buf_get_name(buf)
+  if name ~= "" and vim.fn.filereadable(name) == 1 then
+    pcall(render, buf, state(buf))
   end
   if not vim.g.nvkit_viewer_env_warned then
     vim.g.nvkit_viewer_env_warned = true
