@@ -1,17 +1,26 @@
--- 启动页：自绘双栏卡片（边框/按键徽标/最近文件/会话提示）+ 按键契约 + 窗口缩放重排
+-- 启动页：自绘双栏卡片（边框 / 按键徽标 / 最近文件 5~7 条 + 溢出行 / 会话 * 标记）+ 缩放重排
 -- 背景：q 曾是恢复会话；直接删掉会落到 snacks 默认 q→<cmd>bd</cmd>（绕过 winbuf 接管、销毁启动页）
 local lib = dofile((vim.env.NVIM_DEVKIT_TESTS or vim.fn.fnamemodify(debug.getinfo(1, "S").source:sub(2), ":p:h:h")) .. "/lib.lua")
 
 lib.reset()
 local dir = lib.dir()
 vim.cmd("cd " .. vim.fn.fnameescape(dir))
-vim.fn.writefile({ "x" }, dir .. "/dash_a.lua")
-vim.fn.writefile({ "x" }, dir .. "/dash_b.png")
-vim.v.oldfiles = { dir .. "/dash_a.lua", dir .. "/dash_b.png", "/etc/hosts" }
+local files = {}
+for i = 1, 10 do
+  local f = ("%s/rec_%02d.lua"):format(dir, i)
+  vim.fn.writefile({ "x" }, f)
+  files[#files + 1] = f
+end
+vim.v.oldfiles = files
 require("snacks").dashboard.open({ win = 0 })
 lib.ok("启动页已打开", lib.is_dashboard(), "filetype=" .. vim.bo.filetype)
 
-local text = table.concat(vim.api.nvim_buf_get_lines(0, 0, -1, false), "\n")
+local function lines()
+  return vim.api.nvim_buf_get_lines(0, 0, -1, false)
+end
+local function text()
+  return table.concat(lines(), "\n")
+end
 
 -- 按键内容不变
 local preset = require("snacks").config.dashboard.preset.keys or {}
@@ -26,59 +35,92 @@ lib.ok("preset: q = :q（不再恢复会话）", by_key.q ~= nil and by_key.q.ac
 
 local missing = {}
 for _, k in ipairs({ "e", "f", "g", "u", "r", "q", "?", "c", "l" }) do
-  if not text:find("[" .. k .. "]", 1, true) then
+  if not text():find("[" .. k .. "]", 1, true) then
     missing[#missing + 1] = k
   end
 end
 lib.ok("9 个快捷键徽标齐全（内容不变）", #missing == 0, vim.inspect(missing))
 
-local top_line
-for _, l in ipairs(vim.api.nvim_buf_get_lines(0, 0, -1, false)) do
+-- 边框 + 第一行就是"最近文件"
+local ls = lines()
+local top_idx
+for i, l in ipairs(ls) do
   if l:find("╭", 1, true) then
-    top_line = l
+    top_idx = i
     break
   end
 end
 lib.ok("双栏卡片边框（圆角 + 中缝）",
-  text:find("╭", 1, true) ~= nil and text:find("┬", 1, true) ~= nil
-    and text:find("┼", 1, true) ~= nil and text:find("╰", 1, true) ~= nil,
-  top_line or "(无边框)")
+  text():find("╭", 1, true) ~= nil and text():find("┬", 1, true) ~= nil
+    and text():find("┼", 1, true) ~= nil and text():find("╰", 1, true) ~= nil,
+  ls[top_idx] or "(无边框)")
+lib.ok("左栏第一行是「最近文件」",
+  top_idx ~= nil and ls[top_idx + 1] ~= nil and ls[top_idx + 1]:find("最近文件", 1, true) ~= nil,
+  ls[top_idx + 1] or "(缺失)")
 lib.ok("主页无 nvim-devkit / 科研版 字样",
-  not text:find("nvim-devkit", 1, true) and not text:find("科研版", 1, true), top_line or "")
+  not text():find("nvim-devkit", 1, true) and not text():find("科研版", 1, true), "")
 lib.ok("底部提示使用「状态重置」且无「恐慌」",
-  text:find("状态重置", 1, true) ~= nil and text:find("恐慌", 1, true) == nil, top_line or "")
+  text():find("状态重置", 1, true) ~= nil and text():find("恐慌", 1, true) == nil, "")
 
--- 最近文件：只列 cwd 内、带编号
+-- 最近文件：只列 cwd 内；超过 8 条 → 7 条 + 溢出行（左栏占满）
 lib.ok("最近文件只显示 cwd 内文件",
-  text:find("./dash_a.lua", 1, true) ~= nil and text:find("./dash_b.png", 1, true) ~= nil
-    and text:find("/etc/hosts", 1, true) == nil, top_line or "")
-lib.ok("最近文件数字键映射存在", vim.fn.maparg("1", "n", false, true).callback ~= nil,
-  vim.inspect(vim.fn.maparg("1", "n", false, true)))
+  text():find("./rec_01.lua", 1, true) ~= nil and text():find("/etc/hosts", 1, true) == nil, "")
+lib.ok("溢出时显示「（还有 3 个, 按 o 展开）」",
+  text():find("（还有 3 个, 按 o 展开）", 1, true) ~= nil, text())
+local num_ok = 0
+for i = 1, 7 do
+  if vim.fn.maparg(tostring(i), "n", false, true).callback ~= nil then
+    num_ok = num_ok + 1
+  end
+end
+lib.ok("最近文件 1~7 数字键可用（第 8 条收起）",
+  num_ok == 7 and vim.fn.maparg("8", "n", false, true).callback == nil
+    and vim.fn.maparg("o", "n", false, true).callback ~= nil,
+  ("nums=%d key8=%s key_o=%s"):format(num_ok,
+    tostring(vim.fn.maparg("8", "n", false, true).callback ~= nil),
+    tostring(vim.fn.maparg("o", "n", false, true).callback ~= nil)))
 
--- 启动页内 r/q 映射存在
 lib.ok("启动页内 r 映射存在", vim.fn.maparg("r", "n", false, true).callback ~= nil)
 lib.ok("启动页内 q 映射存在", vim.fn.maparg("q", "n", false, true).callback ~= nil)
 
--- 会话提示：无快照不显示，有快照显示（含简单解释）
+-- 会话标记：有快照 → "恢复会话 *"；无快照 → 无 *（不再单独占一行）
 local p = require("persistence")
 vim.fn.delete(p.current())
 lib.reset()
 require("snacks").dashboard.open({ win = 0 })
-local no_session_text = table.concat(vim.api.nvim_buf_get_lines(0, 0, -1, false), "\n")
-lib.ok("无快照：启动页无会话提示", no_session_text:find("本目录有会话存档", 1, true) == nil)
+local no_sess = text()
+lib.ok("无快照：不显示独立会话提示行", no_sess:find("本目录有会话存档", 1, true) == nil)
+local no_mark = true
+for _, l in ipairs(lines()) do
+  if l:find("恢复会话", 1, true) and l:find("*", 1, true) then
+    no_mark = false
+  end
+end
+lib.ok("无快照：恢复会话行无 * 标记", no_mark, "")
 
 vim.fn.writefile({ "let SessionLoad = 1" }, p.current())
 lib.reset()
 require("snacks").dashboard.open({ win = 0 })
-local has_session_text = table.concat(vim.api.nvim_buf_get_lines(0, 0, -1, false), "\n")
-lib.ok("有快照：显示会话提示（恢复 r）",
-  has_session_text:find("本目录有会话存档（恢复 r）", 1, true) ~= nil,
-  vim.inspect(vim.api.nvim_buf_get_lines(0, 0, -1, false)))
+local has_mark = false
+for _, l in ipairs(lines()) do
+  if l:find("恢复会话 *", 1, true) then
+    has_mark = true
+  end
+end
+lib.ok("有快照：恢复会话行显示绿色 * 标记", has_mark, vim.inspect(lines()))
 vim.fn.delete(p.current())
+
+-- 最近文件不多时：全部列出、无溢出行
+vim.v.oldfiles = { dir .. "/rec_01.lua", dir .. "/rec_02.lua", dir .. "/rec_03.lua" }
+lib.reset()
+require("snacks").dashboard.open({ win = 0 })
+lib.ok("少量最近文件：全部列出且无溢出行",
+  text():find("（还有", 1, true) == nil
+    and vim.fn.maparg("4", "n", false, true).callback == nil, "")
 
 -- 窗口缩放：布局应重排（宽度变化、边框仍完整）
 local function top_width()
-  for _, l in ipairs(vim.api.nvim_buf_get_lines(0, 0, -1, false)) do
+  for _, l in ipairs(lines()) do
     if l:find("╭", 1, true) then
       return vim.api.nvim_strwidth(l)
     end

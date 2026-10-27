@@ -158,8 +158,8 @@ function M.section(self)
   local L = W - 2 -- 左栏内容宽度（左竖线 + 内容 + 中缝竖线）
   local R = W - 1 -- 右栏内容宽度（内容 + 右竖线）
 
-  -- 窗口矮时减少最近文件条数（快捷操作固定 9 条不裁）
-  local recents = recent_files(math.max(0, math.min(5, win_h - 12)))
+  -- 取足够多的候选（用于"还有 N 个"的准确计数），实际显示条数在下面统一裁剪
+  local recents = recent_files(100)
   local rows = {} ---@type { left?: table[], right?: table[], lkey?: string, raction?: any, rkey?: string, laction?: any }[]
 
   local function add(left, right, opts)
@@ -179,48 +179,81 @@ function M.section(self)
   add({ { "╭" .. ("─"):rep(L) .. "┬", hl = "SnacksDashboardBorder" } },
     { { ("─"):rep(R) .. "╮", hl = "SnacksDashboardBorder" } }, { raw = true })
 
-  -- 会话提示（左栏）
-  local session = require("nvim-devkit.session").session_file() ~= nil
-  if session then
-    add({
-      { "● ", hl = "SnacksDashboardSession" },
-      { "本目录有会话存档", hl = "SnacksDashboardDesc" },
-      { "（恢复 ", hl = "SnacksDashboardFooter" },
-      { "r", hl = "SnacksDashboardKey" },
-      { "）", hl = "SnacksDashboardFooter" },
-    }, nil)
+  -- 最近文件：固定填满左侧
+  -- 规则：≤8 条全列；>8 条则列 7 条 + 一行"（还有 N 个, 按 o 展开）"（左栏恰好占满）
+  local avail = #M.keys
+  local max_no_overflow = math.max(0, avail - 1)
+  local shown, overflow = #recents, 0
+  if #recents > max_no_overflow then
+    shown = math.max(0, avail - 2)
+    overflow = #recents - shown
   end
-  add(nil, nil) -- 空行
-
-  -- 最近文件标题
-  add({ { "最近文件", hl = "SnacksDashboardFooter" } }, nil)
-
-  -- 左右主体：最近文件 / 快捷操作
-  for i = 1, math.max(#recents, #M.keys) do
-    local left, lkey, laction
+  local left_items = {
+    { chunks = { { "最近文件", hl = "SnacksDashboardFooter" } } },
+  }
+  for i = 1, shown do
     local r = recents[i]
-    if r then
-      left = {
-        { ("%d "):format(r.idx), hl = "SnacksDashboardKey" },
+    left_items[#left_items + 1] = {
+      chunks = {
+        { ("%d "):format(i), hl = "SnacksDashboardKey" },
         { r.label, hl = "SnacksDashboardFile" },
-      }
-      lkey = tostring(r.idx)
-      laction = ":e " .. vim.fn.fnameescape(r.abs)
+      },
+      key = tostring(i),
+      action = ":e " .. vim.fn.fnameescape(r.abs),
+    }
+  end
+  if overflow > 0 then
+    left_items[#left_items + 1] = {
+      chunks = {
+        { "（还有 ", hl = "SnacksDashboardFooter" },
+        { tostring(overflow), hl = "SnacksDashboardSession" },
+        { " 个, 按 ", hl = "SnacksDashboardFooter" },
+        { "o", hl = "SnacksDashboardKey" },
+        { " 展开）", hl = "SnacksDashboardFooter" },
+      },
+      key = "o",
+      action = ":lua Snacks.picker.recent()",
+    }
+  elseif #recents == 0 then
+    left_items[#left_items + 1] = {
+      chunks = { { "（暂无）", hl = "SnacksDashboardFooter" } },
+    }
+  end
+
+  -- 右侧：快捷操作（内容不变）；有会话存档时在"恢复会话"后显示绿色 *
+  local has_session = require("nvim-devkit.session").session_file() ~= nil
+  local right_items = {}
+  for i, k in ipairs(M.keys) do
+    local chunks = {
+      { (k.icon or "") .. " ", hl = "SnacksDashboardIcon" },
+      { k.desc, hl = "SnacksDashboardDesc" },
+    }
+    if has_session and k.key == "r" then
+      chunks[#chunks + 1] = { " *", hl = "SnacksDashboardSession" }
     end
-    local right, rkey, raction
-    local k = M.keys[i]
-    if k then
-      right = { { (k.icon or "") .. " ", hl = "SnacksDashboardIcon" }, { k.desc, hl = "SnacksDashboardDesc" } }
-      rkey = k.key
-      raction = k.action
-      -- 按键徽标靠右对齐
-      local used = chunks_width(right)
-      local badge = ("[%s]"):format(k.key)
-      right[#right + 1] = { (" "):rep(math.max(1, R - used - sw(badge) - 1)) }
-      right[#right + 1] = { badge, hl = "SnacksDashboardKey" }
-      right[#right + 1] = { " " }
-    end
-    add(left, right, { lkey = lkey, laction = laction, rkey = rkey, raction = raction })
+    local used = chunks_width(chunks)
+    local badge = ("[%s]"):format(k.key)
+    chunks[#chunks + 1] = { (" "):rep(math.max(1, R - used - sw(badge) - 1)) }
+    chunks[#chunks + 1] = { badge, hl = "SnacksDashboardKey" }
+    chunks[#chunks + 1] = { " " }
+    right_items[i] = {
+      chunks = chunks,
+      key = k.key,
+      action = k.action,
+    }
+  end
+
+  -- 左右按行合并（标题行与第一个快捷键同一行）
+  local n = math.max(#left_items, #right_items)
+  for i = 1, n do
+    local left = left_items[i]
+    local right = right_items[i]
+    add(left and left.chunks, right and right.chunks, {
+      lkey = left and left.key,
+      laction = left and left.action,
+      rkey = right and right.key,
+      raction = right and right.action,
+    })
   end
 
   -- 底部：分隔线 + 页脚（左：启动耗时；右：提示）
